@@ -1,10 +1,9 @@
 // ==========================================
 // 1. DYNAMIC SERVER CONFIGURATION
 // ==========================================
-// This checks if you are running locally or on the web
 const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000' 
-    : 'https://your-backend-name.onrender.com'; // <--- REPLACE THIS WITH YOUR RENDER URL
+    : 'https://kizito-server.onrender.com'; // ✅ UPDATED WITH YOUR RENDER URL
 
 const socket = io(BACKEND_URL);
 let userSocketId = "";
@@ -12,6 +11,7 @@ let userSocketId = "";
 // Monitor server health every 5 seconds
 setInterval(() => {
     const statusDot = document.getElementById('statusDot');
+    if (!statusDot) return;
     if (socket.connected) {
         statusDot.style.backgroundColor = "#2ecc71"; // Green
         statusDot.title = "Server Online";
@@ -26,13 +26,13 @@ socket.on('connect', () => {
     console.log("Connected to server. ID:", userSocketId);
 });
 
-// Listener for single-file download/stream progress
+// Listener for download progress
 socket.on('progress', (data) => {
     const bar = document.getElementById('progressBar');
     const text = document.getElementById('progressText');
     const wrapper = document.getElementById('progressWrapper');
 
-    if (data.percent !== undefined) {
+    if (data.percent !== undefined && bar && text && wrapper) {
         wrapper.style.display = "block";
         text.style.display = "block";
         
@@ -64,6 +64,7 @@ function formatYoutubeUrl(input) {
 
 function showError(message) {
     const errorBox = document.getElementById('errorBox');
+    if (!errorBox) return alert(message);
     errorBox.innerText = message;
     errorBox.style.display = "block";
     errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -71,7 +72,7 @@ function showError(message) {
 
 function showToast(message) {
     const toast = document.getElementById('toast');
-    if (!toast) return; 
+    if (!toast) return console.log(message); 
     
     toast.innerText = message;
     toast.style.display = "block";
@@ -102,7 +103,9 @@ async function fetchVideo() {
         return;
     }
 
-    document.getElementById('errorBox').style.display = "none";
+    const errorBox = document.getElementById('errorBox');
+    if (errorBox) errorBox.style.display = "none";
+    
     startBtn.disabled = true;
     spinner.style.display = "inline-block";
 
@@ -113,7 +116,6 @@ async function fetchVideo() {
         try {
             btnText.innerText = attempts > 0 ? `Retrying (${attempts})...` : "Loading...";
             
-            // Updated to use BACKEND_URL
             const response = await fetch(`${BACKEND_URL}/info?url=${encodeURIComponent(videoUrl)}`);
             const data = await response.json();
 
@@ -123,14 +125,9 @@ async function fetchVideo() {
                 
                 const sizeDisplay = document.getElementById('sizeInfo');
                 const fileSizeText = document.getElementById('fileSize');
-                if (data.size) {
+                if (data.size && sizeDisplay && fileSizeText) {
                     sizeDisplay.style.display = "block";
                     fileSizeText.innerText = data.size;
-                }
-
-                const durationText = document.getElementById('videoDuration');
-                if (durationText && data.duration) {
-                    durationText.innerText = data.duration;
                 }
 
                 document.getElementById('result').style.display = "block";
@@ -146,7 +143,7 @@ async function fetchVideo() {
         } catch (error) {
             attempts++;
             if (attempts >= maxRetries) {
-                showError("YouTube is blocking requests. Please try again in a minute.");
+                showError("YouTube is blocking requests. Check your cookies.json or try again.");
             } else {
                 await delay(2500);
             }
@@ -164,26 +161,30 @@ function playMedia() {
     const aPlayer = document.getElementById('audioPlayer');
     const container = document.getElementById('playerContainer');
 
+    if (!container) return;
     container.style.display = "block";
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
     const ts = Date.now(); 
-    // Updated to use BACKEND_URL
     const mediaUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}&stream=true&cache=${ts}`;
 
     if (selection === 'mp3') {
-        vPlayer.style.display = "none"; vPlayer.pause();
-        aPlayer.style.display = "block";
-        aPlayer.src = mediaUrl;
-        aPlayer.play().catch(() => {
-            setTimeout(() => { aPlayer.load(); aPlayer.play(); }, 3000);
-        });
+        if (vPlayer) { vPlayer.style.display = "none"; vPlayer.pause(); }
+        if (aPlayer) {
+            aPlayer.style.display = "block";
+            aPlayer.src = mediaUrl;
+            aPlayer.play().catch(() => {
+                setTimeout(() => { aPlayer.load(); aPlayer.play(); }, 3000);
+            });
+        }
     } else {
-        aPlayer.style.display = "none"; aPlayer.pause();
-        vPlayer.style.display = "block";
-        vPlayer.src = mediaUrl;
-        vPlayer.play().catch(() => {
-            setTimeout(() => { vPlayer.load(); vPlayer.play(); }, 3000);
-        });
+        if (aPlayer) { aPlayer.style.display = "none"; aPlayer.pause(); }
+        if (vPlayer) {
+            vPlayer.style.display = "block";
+            vPlayer.src = mediaUrl;
+            vPlayer.play().catch(() => {
+                setTimeout(() => { vPlayer.load(); vPlayer.play(); }, 3000);
+            });
+        }
     }
 }
 
@@ -191,7 +192,6 @@ function triggerDownload() {
     const videoUrl = formatYoutubeUrl(document.getElementById('videoUrl').value);
     const selection = document.getElementById('formatSelect').value;
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
-    // Updated to use BACKEND_URL
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
     window.open(dlUrl, '_blank');
 }
@@ -200,7 +200,6 @@ function copyDownloadLink() {
     const videoUrl = formatYoutubeUrl(document.getElementById('videoUrl').value);
     const selection = document.getElementById('formatSelect').value;
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
-    // Updated to use BACKEND_URL
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
 
     navigator.clipboard.writeText(dlUrl).then(() => {
@@ -219,11 +218,13 @@ const htmlRoot = document.documentElement;
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
-themeToggle.addEventListener('click', () => {
-    const currentTheme = htmlRoot.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    applyTheme(newTheme);
-});
+if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = htmlRoot.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+    });
+}
 
 function applyTheme(theme) {
     htmlRoot.setAttribute('data-theme', theme);
@@ -289,7 +290,7 @@ function clearHistory() {
 }
 
 // ==========================================
-// 6. ZIP ALL DOWNLOAD & PROGRESS OVERLAY
+// 6. ZIP ALL DOWNLOAD
 // ==========================================
 async function downloadAllAsZip() {
     const history = JSON.parse(localStorage.getItem('conv_history') || "[]");
@@ -314,12 +315,13 @@ async function downloadAllAsZip() {
         for (let item of history) {
             count++;
             
-            progressWrapper.style.display = "block";
-            progressText.style.display = "block";
-            progressText.innerText = `Downloading ${count}/${history.length}: ${item.title.substring(0,15)}...`;
-            progressBar.style.width = `${(count / history.length) * 100}%`;
+            if (progressWrapper && progressText && progressBar) {
+                progressWrapper.style.display = "block";
+                progressText.style.display = "block";
+                progressText.innerText = `Downloading ${count}/${history.length}: ${item.title.substring(0,15)}...`;
+                progressBar.style.width = `${(count / history.length) * 100}%`;
+            }
 
-            // Updated to use BACKEND_URL
             const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(item.url)}&quality=${selection}&format=${format}`;
             
             const response = await fetch(dlUrl, { method: 'GET', mode: 'cors' });
@@ -330,7 +332,7 @@ async function downloadAllAsZip() {
             zip.file(`${safeName}.${format}`, blob);
         }
 
-        progressText.innerText = "📦 Finalizing Zip Archive...";
+        if (progressText) progressText.innerText = "📦 Finalizing Zip Archive...";
         const content = await zip.generateAsync({ type: "blob" });
         
         const link = document.createElement('a');
@@ -347,8 +349,8 @@ async function downloadAllAsZip() {
         zipBtn.disabled = false;
         
         setTimeout(() => {
-            progressWrapper.style.display = "none";
-            progressBar.style.width = "0%";
+            if (progressWrapper) progressWrapper.style.display = "none";
+            if (progressBar) progressBar.style.width = "0%";
         }, 2500);
     }
 }

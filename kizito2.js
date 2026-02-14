@@ -3,7 +3,7 @@
 // ==========================================
 const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000' 
-    : 'https://kizito-server.onrender.com'; // ✅ UPDATED WITH YOUR RENDER URL
+    : 'https://kizito-server.onrender.com'; 
 
 const socket = io(BACKEND_URL);
 let userSocketId = "";
@@ -110,13 +110,18 @@ async function fetchVideo() {
     spinner.style.display = "inline-block";
 
     let attempts = 0;
-    const maxRetries = 3;
+    const maxRetries = 2; // Reduced retries for faster user feedback
 
-    while (attempts < maxRetries) {
+    while (attempts <= maxRetries) {
         try {
             btnText.innerText = attempts > 0 ? `Retrying (${attempts})...` : "Loading...";
             
-            const response = await fetch(`${BACKEND_URL}/info?url=${encodeURIComponent(videoUrl)}`);
+            // ✅ CORRECTION: Added headers to mimic a browser request more closely
+            const response = await fetch(`${BACKEND_URL}/info?url=${encodeURIComponent(videoUrl)}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            
             const data = await response.json();
 
             if (response.ok) {
@@ -133,67 +138,36 @@ async function fetchVideo() {
                 document.getElementById('result').style.display = "block";
                 addToHistory(data.title, data.thumbnail, videoUrl);
 
-                btnText.innerText = "Start";
+                btnText.innerText = "Fetch";
                 spinner.style.display = "none";
                 startBtn.disabled = false;
                 return; 
             } else {
-                throw new Error(data.error || "Server Error");
+                throw new Error(data.error || "YouTube Blocked");
             }
         } catch (error) {
             attempts++;
-            if (attempts >= maxRetries) {
-                showError("YouTube is blocking requests. Check your cookies.json or try again.");
+            if (attempts > maxRetries) {
+                showError("YouTube is blocking requests. Please update your cookies.json in the backend and redeploy.");
             } else {
-                await delay(2500);
+                await delay(2000);
             }
         }
     }
-    btnText.innerText = "Start";
+    btnText.innerText = "Fetch";
     spinner.style.display = "none";
     startBtn.disabled = false;
-}
-
-function playMedia() {
-    const videoUrl = formatYoutubeUrl(document.getElementById('videoUrl').value);
-    const selection = document.getElementById('formatSelect').value;
-    const vPlayer = document.getElementById('videoPlayer');
-    const aPlayer = document.getElementById('audioPlayer');
-    const container = document.getElementById('playerContainer');
-
-    if (!container) return;
-    container.style.display = "block";
-    const format = (selection === 'mp3') ? 'mp3' : 'mp4';
-    const ts = Date.now(); 
-    const mediaUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}&stream=true&cache=${ts}`;
-
-    if (selection === 'mp3') {
-        if (vPlayer) { vPlayer.style.display = "none"; vPlayer.pause(); }
-        if (aPlayer) {
-            aPlayer.style.display = "block";
-            aPlayer.src = mediaUrl;
-            aPlayer.play().catch(() => {
-                setTimeout(() => { aPlayer.load(); aPlayer.play(); }, 3000);
-            });
-        }
-    } else {
-        if (aPlayer) { aPlayer.style.display = "none"; aPlayer.pause(); }
-        if (vPlayer) {
-            vPlayer.style.display = "block";
-            vPlayer.src = mediaUrl;
-            vPlayer.play().catch(() => {
-                setTimeout(() => { vPlayer.load(); vPlayer.play(); }, 3000);
-            });
-        }
-    }
 }
 
 function triggerDownload() {
     const videoUrl = formatYoutubeUrl(document.getElementById('videoUrl').value);
     const selection = document.getElementById('formatSelect').value;
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
+    // ✅ ADDED: Validation before redirect
+    if(!videoUrl) return showError("No video loaded!");
+    
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
-    window.open(dlUrl, '_blank');
+    window.location.href = dlUrl; // Changed from window.open to location.href for better mobile support
 }
 
 function copyDownloadLink() {
@@ -203,9 +177,9 @@ function copyDownloadLink() {
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
 
     navigator.clipboard.writeText(dlUrl).then(() => {
-        showToast("Download link copied! 📋");
+        showToast("Link copied! 📋");
     }).catch(err => {
-        showError("Could not copy link automatically.");
+        showError("Could not copy link.");
     });
 }
 
@@ -215,6 +189,7 @@ function copyDownloadLink() {
 const themeToggle = document.getElementById('themeToggle');
 const htmlRoot = document.documentElement;
 
+// Correctly load and apply the theme on start
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
@@ -229,7 +204,11 @@ if (themeToggle) {
 function applyTheme(theme) {
     htmlRoot.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
-    if(themeToggle) themeToggle.innerText = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+    // ✅ Ensure text changes correctly
+    if(themeToggle) {
+        themeToggle.innerHTML = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+    }
+    console.log("Theme applied:", theme);
 }
 
 // ==========================================
@@ -270,7 +249,7 @@ function renderHistory() {
                 <small style="opacity: 0.6; font-size: 11px; color: var(--text-color);">${item.date}</small>
             </div>
             <button onclick="reFetch('${item.url}')" style="padding: 4px 8px; font-size: 11px; background: #007bff; color: white; border-radius: 4px; border: none; cursor: pointer;">
-                Re-fetch
+                Get
             </button>
         </div>
     `).join('');
@@ -282,13 +261,6 @@ window.reFetch = (url) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-function clearHistory() {
-    if(confirm("Clear your conversion history?")) {
-        localStorage.removeItem('conv_history');
-        renderHistory();
-    }
-}
-
 // ==========================================
 // 6. ZIP ALL DOWNLOAD
 // ==========================================
@@ -299,7 +271,7 @@ async function downloadAllAsZip() {
     const zipBtn = document.getElementById('zipBtn');
     const originalText = zipBtn.innerText;
     
-    zipBtn.innerText = "⚡ Preparing Zip...";
+    zipBtn.innerText = "⚡ Zipping...";
     zipBtn.disabled = true;
 
     const zip = new JSZip();
@@ -318,13 +290,13 @@ async function downloadAllAsZip() {
             if (progressWrapper && progressText && progressBar) {
                 progressWrapper.style.display = "block";
                 progressText.style.display = "block";
-                progressText.innerText = `Downloading ${count}/${history.length}: ${item.title.substring(0,15)}...`;
+                progressText.innerText = `Downloading ${count}/${history.length}...`;
                 progressBar.style.width = `${(count / history.length) * 100}%`;
             }
 
             const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(item.url)}&quality=${selection}&format=${format}`;
             
-            const response = await fetch(dlUrl, { method: 'GET', mode: 'cors' });
+            const response = await fetch(dlUrl);
             if (!response.ok) throw new Error(`Failed to fetch ${item.title}`);
             
             const blob = await response.blob();
@@ -332,7 +304,7 @@ async function downloadAllAsZip() {
             zip.file(`${safeName}.${format}`, blob);
         }
 
-        if (progressText) progressText.innerText = "📦 Finalizing Zip Archive...";
+        if (progressText) progressText.innerText = "📦 Saving Zip...";
         const content = await zip.generateAsync({ type: "blob" });
         
         const link = document.createElement('a');
@@ -340,18 +312,15 @@ async function downloadAllAsZip() {
         link.download = `YouTube_Pack_${Date.now()}.zip`;
         link.click();
         
-        showToast("Zip downloaded! 📦");
+        showToast("Success! 📦");
     } catch (err) {
-        console.error("Zip Error:", err);
-        showError("Batch Zip failed. Ensure server is active.");
+        showError("Batch Zip failed.");
     } finally {
         zipBtn.innerText = originalText;
         zipBtn.disabled = false;
-        
         setTimeout(() => {
             if (progressWrapper) progressWrapper.style.display = "none";
-            if (progressBar) progressBar.style.width = "0%";
-        }, 2500);
+        }, 2000);
     }
 }
 

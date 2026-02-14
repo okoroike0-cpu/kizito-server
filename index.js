@@ -1,7 +1,8 @@
 const express = require('express');
 const ytdl = require('@distube/ytdl-core');
 const cors = require('cors');
-const ffmpeg = require('fluent-ffmpeg');
+const fs = require('fs'); // Added to read cookies.json
+const path = require('path'); // Added for file paths
 const http = require('http'); 
 const { Server } = require('socket.io');
 
@@ -13,9 +14,9 @@ const io = new Server(server, {
     cors: { origin: "*" } 
 });
 
-// ==========================================
-// FINAL CORS CONFIGURATION (Optimized for JSZip)
-// ==========================================
+// Serve static files (Crucial to fix "Cannot GET /")
+app.use(express.static(__dirname));
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'], 
@@ -23,13 +24,21 @@ app.use(cors({
     exposedHeaders: ['Content-Length', 'Content-Type', 'Content-Disposition'] 
 }));
 
-// --- ENHANCED AGENT SETUP ---
-const agent = ytdl.createAgent([
-    {
-        name: "User-Agent",
-        value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    }
-]);
+// --- COOKIE AGENT SETUP (Corrected to use your cookies.json) ---
+let agent;
+if (fs.existsSync('cookies.json')) {
+    const cookies = JSON.parse(fs.readFileSync('cookies.json', 'utf8'));
+    agent = ytdl.createAgent(cookies);
+    console.log("✅ Cookies loaded successfully from cookies.json");
+} else {
+    agent = ytdl.createAgent();
+    console.log("⚠️ No cookies.json found. YouTube might block requests.");
+}
+
+// FIX: Root route to show your HTML
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // 1. GET VIDEO INFO
 app.get('/info', async (req, res) => {
@@ -54,7 +63,7 @@ app.get('/info', async (req, res) => {
         });
     } catch (err) {
         console.error("Info Error:", err.message);
-        res.status(500).json({ error: "YouTube blocked the info request." });
+        res.status(500).json({ error: "YouTube blocked the info request. Update cookies.json!" });
     }
 });
 
@@ -99,12 +108,12 @@ app.get('/download', async (req, res) => {
 
         downloadStream.on('error', err => {
             console.error("Stream Error:", err.message);
-            if (!res.headersSent) res.status(500).send("Access Forbidden.");
+            if (!res.headersSent) res.status(500).send("Access Forbidden. Please update cookies.json.");
         });
 
         downloadStream.on('progress', (_, downloaded, total) => {
             const percent = (downloaded / total) * 100;
-            if (socketId) io.to(socketId).emit('progress', { percent });
+            if (socketId) io.to(socketId).emit('progress', { percent: percent.toFixed(2) });
         });
 
         return downloadStream.pipe(res);
@@ -115,7 +124,6 @@ app.get('/download', async (req, res) => {
     }
 });
 
-// 3. START SERVER (Updated for Render/Vercel)
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log('-------------------------------------------');

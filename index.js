@@ -12,9 +12,14 @@ const io = new Server(server, {
     cors: { origin: "*" } 
 });
 
-console.log("🚀 Video Converter Server starting...");
+// Server Identity Log
+console.log("🚀 Video Converter Server (yt-dlp) starting...");
+
+// Check if cookies are present on the Render server
 if (fs.existsSync('cookies.txt')) {
-    console.log("✅ cookies.txt found.");
+    console.log("✅ cookies.txt detected in secret files.");
+} else {
+    console.log("⚠️ No cookies.txt found. YouTube might block requests.");
 }
 
 app.use(express.static(__dirname));
@@ -35,8 +40,8 @@ app.get('/info', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) return res.status(400).json({ error: "URL is required" });
 
-    // SNEAKY UPDATE: Using 'ios' client which is harder for YouTube to block
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --extractor-args "youtube:player-client=ios,web;player-params=2" "${videoUrl}"`;
+    // Using the 'embedded' client strategy to bypass bot detection
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" --extractor-args "youtube:player-client=android_embedded,web_embedded;player-params=2" "${videoUrl}"`;
     
     if (fs.existsSync('cookies.txt')) {
         cmd += ` --cookies cookies.txt`;
@@ -44,8 +49,8 @@ app.get('/info', (req, res) => {
 
     exec(cmd, (error, stdout, stderr) => {
         if (error) {
-            console.error("Info Error:", stderr);
-            return res.status(500).json({ error: "YouTube is blocking the server. Please refresh cookies.txt on Render!" });
+            console.error("Info Error Output:", stderr);
+            return res.status(500).json({ error: "YouTube is blocking the request. Update cookies.txt on Render!" });
         }
 
         try {
@@ -72,8 +77,13 @@ app.get('/download', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="video.${ext}"`);
     res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-    // SNEAKY UPDATE: Match info route
-    let args = [url, '-o', '-', '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', '--extractor-args', 'youtube:player-client=ios,web;player-params=2'];
+    // Matching the 'embedded' flags from the info route
+    let args = [
+        url, 
+        '-o', '-', 
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        '--extractor-args', 'youtube:player-client=android_embedded,web_embedded;player-params=2'
+    ];
 
     if (fs.existsSync('cookies.txt')) {
         args.push('--cookies', 'cookies.txt');
@@ -82,6 +92,7 @@ app.get('/download', (req, res) => {
     if (format === 'mp3') {
         args.push('-x', '--audio-format', 'mp3');
     } else {
+        // Quality Logic
         let formatSelection = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
         if (quality === '1080p') formatSelection = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
         if (quality === '720p') formatSelection = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
@@ -104,7 +115,7 @@ app.get('/download', (req, res) => {
     });
 
     req.on('close', () => {
-        ls.kill();
+        ls.kill(); // Kill the process if user cancels download
     });
 });
 

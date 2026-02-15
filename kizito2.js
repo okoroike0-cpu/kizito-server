@@ -26,7 +26,7 @@ socket.on('connect', () => {
     console.log("Connected to server. ID:", userSocketId);
 });
 
-// Listener for download progress
+// Listener for download progress (Now works with yt-dlp percentage updates)
 socket.on('progress', (data) => {
     const bar = document.getElementById('progressBar');
     const text = document.getElementById('progressText');
@@ -110,13 +110,13 @@ async function fetchVideo() {
     spinner.style.display = "inline-block";
 
     let attempts = 0;
-    const maxRetries = 2; // Reduced retries for faster user feedback
+    const maxRetries = 2; 
 
     while (attempts <= maxRetries) {
         try {
             btnText.innerText = attempts > 0 ? `Retrying (${attempts})...` : "Loading...";
             
-            // ✅ CORRECTION: Added headers to mimic a browser request more closely
+            // Calling the new yt-dlp based backend
             const response = await fetch(`${BACKEND_URL}/info?url=${encodeURIComponent(videoUrl)}`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
@@ -126,13 +126,26 @@ async function fetchVideo() {
 
             if (response.ok) {
                 document.getElementById('title').innerText = data.title;
-                document.getElementById('thumbImg').src = data.thumbnail;
                 
+                // ✅ CSPLAYER INTEGRATION
+                if (window.csPlayer) {
+                    if (!window.myPlayer) {
+                        window.myPlayer = new csPlayer("#videoPreview", {
+                            id: data.videoId,
+                            theme: "default",
+                            autoplay: false
+                        });
+                    } else {
+                        window.myPlayer.load(data.videoId);
+                    }
+                }
+
                 const sizeDisplay = document.getElementById('sizeInfo');
                 const fileSizeText = document.getElementById('fileSize');
-                if (data.size && sizeDisplay && fileSizeText) {
+                if (sizeDisplay && fileSizeText) {
                     sizeDisplay.style.display = "block";
-                    fileSizeText.innerText = data.size;
+                    // Since yt-dlp streams, size is dynamic
+                    fileSizeText.innerText = data.size || "Processing...";
                 }
 
                 document.getElementById('result').style.display = "block";
@@ -148,7 +161,7 @@ async function fetchVideo() {
         } catch (error) {
             attempts++;
             if (attempts > maxRetries) {
-                showError("YouTube is blocking requests. Please update your cookies.json in the backend and redeploy.");
+                showError("YouTube is blocking requests. Please update your cookies.json in the backend and verify the Render build.");
             } else {
                 await delay(2000);
             }
@@ -163,11 +176,11 @@ function triggerDownload() {
     const videoUrl = formatYoutubeUrl(document.getElementById('videoUrl').value);
     const selection = document.getElementById('formatSelect').value;
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
-    // ✅ ADDED: Validation before redirect
+    
     if(!videoUrl) return showError("No video loaded!");
     
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(videoUrl)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
-    window.location.href = dlUrl; // Changed from window.open to location.href for better mobile support
+    window.location.href = dlUrl; 
 }
 
 function copyDownloadLink() {
@@ -189,7 +202,6 @@ function copyDownloadLink() {
 const themeToggle = document.getElementById('themeToggle');
 const htmlRoot = document.documentElement;
 
-// Correctly load and apply the theme on start
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
@@ -204,11 +216,9 @@ if (themeToggle) {
 function applyTheme(theme) {
     htmlRoot.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
-    // ✅ Ensure text changes correctly
     if(themeToggle) {
         themeToggle.innerHTML = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
     }
-    console.log("Theme applied:", theme);
 }
 
 // ==========================================

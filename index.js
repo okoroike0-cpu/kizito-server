@@ -1,14 +1,13 @@
 const express = require('express');
-const ytdl = require('@distube/ytdl-core');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const http = require('http'); 
 const { Server } = require('socket.io');
+const { spawn, exec } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
-
 const io = new Server(server, { 
     cors: { origin: "*" } 
 });
@@ -20,94 +19,100 @@ app.use(cors({
     exposedHeaders: ['Content-Length', 'Content-Type', 'Content-Disposition'] 
 }));
 
-// --- FIX 1: ADDED BROWSER USER-AGENT TO BYPASS BLOCKS ---
-const customUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-
-let agent;
-try {
-    if (fs.existsSync('cookies.json')) {
-        const cookies = JSON.parse(fs.readFileSync('cookies.json', 'utf8'));
-        // We pass the User-Agent here to make the request look like a real person
-        agent = ytdl.createAgent(cookies, { 'User-Agent': customUserAgent });
-        console.log("✅ Cookies & User-Agent loaded successfully.");
-    } else {
-        agent = ytdl.createAgent(undefined, { 'User-Agent': customUserAgent });
-        console.log("⚠️ No cookies.json found. Using User-Agent only.");
-    }
-} catch (e) {
-    console.error("❌ Error parsing cookies.json:", e.message);
-    agent = ytdl.createAgent(undefined, { 'User-Agent': customUserAgent });
-}
+// Path to your yt-dlp binary (downloaded via the Render Build Command)
+const YTDLP_PATH = './yt-dlp';
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.get('/info', async (req, res) => {
-    try {
-        // Pass the agent into getInfo
-        const info = await ytdl.getInfo(req.query.url, { agent });
-        
-        let format = ytdl.chooseFormat(info.formats, { quality: '18' }) || info.formats[0];
+// --- 1. GET VIDEO INFO ---
+app.get('/info', (req, res) => {
+    const videoUrl = req.query.url;
+    if (!videoUrl) return res.status(400).json({ error: "URL is required" });
 
-        res.json({ 
-            title: info.videoDetails.title, 
-            thumbnail: info.videoDetails.thumbnails[0].url,
-            size: format.contentLength ? (parseInt(format.contentLength) / (1024 * 1024)).toFixed(2) + " MB" : "Unknown",
-            duration: Math.floor(info.videoDetails.lengthSeconds / 60) + ":" + (info.videoDetails.lengthSeconds % 60).toString().padStart(2, '0')
-        });
-    } catch (err) {
-        console.error("Info Error:", err.message);
-        res.status(500).json({ error: "YouTube blocked the request. Refresh cookies.json!" });
-    }
+    // yt-dlp command to get metadata in JSON format
+    // Added --cookies cookies.json if it exists
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist "${videoUrl}"`;
+    if (fs.existsSync('cookies.json')) cmd += ` --cookies cookies.json`;
+
+    exec(cmd, (error, stdout, stderr) => {
+        if (error) {
+            console.error("Info Error:", stderr);
+            return res.status(500).json({ error: "YouTube blocked the request or URL is invalid." });
+        }
+
+        try {
+            const info = JSON.parse(stdout);
+            res.json({ 
+                title: info.title, 
+                thumbnail: info.thumbnail,
+                videoId: info.id, 
+                size: "Calculating...", // yt-dlp calculates size during actual download
+                duration: info.duration_string
+            });
+        } catch (err) {
+            res.status(500).json({ error: "Failed to parse video data." });
+        }
+    });
 });
 
-app.get('/download', async (req, res) => {
+// --- 2. DOWNLOAD & STREAM ---
+app.get('/download', (req, res) => {
     const { url, quality, format, socketId } = req.query;
 
-    try {
-        const info = await ytdl.getInfo(url, { agent });
-        const title = info.videoDetails.title.replace(/[^\w\s]/gi, '');
+    if (!url) return res.status(400).send("URL is required");
 
-        let itag = 18; 
-        if (quality === '1080p') itag = 137;
-        else if (quality === '720p') itag = 22;
+    // Define filename and extension
+    const ext = format === 'mp3' ? 'mp3' : 'mp4';
+    
+    // Set headers for browser download
+    res.setHeader('Content-Disposition', `attachment; filename="video.${ext}"`);
+    res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-        const options = { 
-            quality: itag, 
-            agent, // Crucial: use the agent here too
-            filter: format === 'mp3' ? 'audioonly' : 'audioandvideo'
-        };
-        
-        const downloadStream = ytdl(url, options);
+    // Build arguments for yt-dlp
+    let args = [url, '-o', '-']; // '-o -' tells it to stream to stdout (standard output)
 
-        downloadStream.on('info', (info, format) => {
-            res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
-            const ext = format === 'mp3' ? 'mp3' : 'mp4';
-            res.setHeader('Content-Disposition', `attachment; filename="${title}.${ext}"`);
-        });
-
-        downloadStream.on('progress', (_, downloaded, total) => {
-            const percent = ((downloaded / total) * 100).toFixed(2);
-            if (socketId) {
-                io.to(socketId).emit('progress', { percent });
-            }
-        });
-
-        downloadStream.on('error', err => {
-            console.error("Stream Error:", err.message);
-            if (!res.headersSent) res.status(500).send("YouTube connection lost.");
-        });
-
-        return downloadStream.pipe(res);
-
-    } catch (error) {
-        console.error("Download Error:", error.message);
-        if (!res.headersSent) res.status(500).send("Error: " + error.message);
+    if (fs.existsSync('cookies.json')) {
+        args.push('--cookies', 'cookies.json');
     }
+
+    if (format === 'mp3') {
+        args.push('-x', '--audio-format', 'mp3');
+    } else {
+        // Quality logic: 1080p, 720p, or best
+        let formatSelection = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        if (quality === '1080p') formatSelection = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        if (quality === '720p') formatSelection = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        args.push('-f', formatSelection);
+    }
+
+    // Use 'spawn' instead of 'exec' for streaming (better for large files)
+    const ls = spawn(YTDLP_PATH, args);
+
+    // Pipe the data directly to the user's browser
+    ls.stdout.pipe(res);
+
+    // Track progress via stderr (yt-dlp sends status updates here)
+    ls.stderr.on('data', (data) => {
+        const output = data.toString();
+        const match = output.match(/(\d+\.\d+)%/); // Search for progress percentage
+        if (match && socketId) {
+            io.to(socketId).emit('progress', { percent: match[1] });
+        }
+    });
+
+    ls.on('close', (code) => {
+        console.log(`Download process exited with code ${code}`);
+    });
+
+    // Handle user cancelling the download
+    req.on('close', () => {
+        ls.kill();
+    });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Kizito Server running on port ${PORT}`);
+    console.log(`🚀 Kizito Server (yt-dlp) running on port ${PORT}`);
 });

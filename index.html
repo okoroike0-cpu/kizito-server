@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kizito Video Converter</title>
+    <title>OmniFetch | Universal Media Pathfinder</title>
     
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.css">
     <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.js"></script>
 
     <style>
-        /* 1. Theme Variables & Force Application */
         :root {
             --bg-color: #f4f7f6;
             --card-bg: #ffffff;
@@ -20,14 +18,16 @@
             --border-color: #dddddd;
             --input-bg: #ffffff;
             --accent: #007bff;
+            --step-bg: #eef2f3;
         }
 
         [data-theme="dark"] {
-            --bg-color: #121212 !important;
-            --card-bg: #1e1e1e !important;
-            --text-color: #e0e0e0 !important;
-            --border-color: #444444 !important;
-            --input-bg: #2d2d2d !important;
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --border-color: #444444;
+            --input-bg: #2d2d2d;
+            --step-bg: #252525;
         }
 
         body { 
@@ -35,131 +35,142 @@
             color: var(--text-color);
             margin: 0; 
             padding: 0;
-            transition: background 0.3s ease, color 0.3s ease;
-            font-family: 'Segoe UI', sans-serif;
+            transition: 0.3s;
+            font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
         .container { 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
-            padding: 60px 20px; 
+            padding: 40px 15px; 
         }
 
         .card { 
             background: var(--card-bg); 
             padding: 30px; 
             border-radius: 15px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
             width: 100%; 
             max-width: 500px;
+            margin-bottom: 20px;
         }
 
-        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        #statusDot { width: 10px; height: 10px; border-radius: 50%; background: #e74c3c; display: inline-block; }
+        /* --- 📱 RESPONSIVE MEDIA QUERIES --- */
+        @media (max-width: 600px) {
+            .container { padding: 20px 10px; }
+            .card { padding: 20px; border-radius: 10px; }
+            h1 { font-size: 24px; }
+            .input-row { flex-direction: column; }
+            button { width: 100%; }
+            .guide-grid { grid-template-columns: 1fr !important; }
+        }
 
         .input-row { display: flex; gap: 10px; margin: 20px 0; }
         input { 
-            flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); 
-            background: var(--input-bg); color: var(--text-color); outline: none; 
+            flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); 
+            background: var(--input-bg); color: var(--text-color); font-size: 16px;
         }
 
         button { 
-            cursor: pointer; border: none; padding: 12px 20px; border-radius: 8px; 
-            font-weight: bold; background: var(--accent); color: white; transition: transform 0.1s; 
-        }
-        button:active { transform: scale(0.95); }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        #progressWrapper {
-            width: 100%; background: var(--border-color); height: 8px;
-            border-radius: 10px; margin: 15px 0; display: none; overflow: hidden;
-        }
-        #progressBar { width: 0%; height: 100%; background: #28a745; transition: width 0.3s linear; }
-
-        /* Results Section Update */
-        .video-box { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px; }
-        
-        /* ✅ 2. CSPLAYER CONTAINER STYLING */
-        #videoPreview { 
-            width: 100%; 
-            aspect-ratio: 16 / 9; 
-            border-radius: 8px; 
-            overflow: hidden;
-            background: #000;
+            cursor: pointer; border: none; padding: 12px 25px; border-radius: 8px; 
+            font-weight: bold; background: var(--accent); color: white;
         }
 
-        .meta { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-        
-        select { 
-            padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); 
-            background: var(--input-bg); color: var(--text-color); 
+        /* --- GUIDE SECTION --- */
+        .guide-section {
+            max-width: 800px;
+            width: 100%;
+            margin-top: 30px;
+            text-align: center;
         }
 
-        .theme-switch { position: absolute; top: 20px; right: 20px; }
-        .spinner { border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid #fff; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; display: none; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .guide-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .guide-box {
+            background: var(--step-bg);
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .guide-box strong { color: var(--accent); display: block; margin-bottom: 5px; }
+
+        #videoPreview { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; margin-bottom: 15px; }
+        .spinner { border: 2px solid #ffffff4d; border-top: 2px solid #fff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: none; margin-left: 10px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="theme-switch">
-        <button id="themeToggle">🌙 Dark Mode</button>
+    <div class="theme-switch" style="position: absolute; top: 15px; right: 15px;">
+        <button id="themeToggle" style="padding: 8px 15px; font-size: 12px;">🌙 Mode</button>
     </div>
 
     <div class="container">
         <div class="card">
-            <div class="status-header">
-                <span style="font-size: 12px; opacity: 0.7;">Server Status: <span id="statusDot"></span></span>
-            </div>
-            <h1 style="text-align: center; margin: 0;">Video Converter</h1>
+            <h1 style="text-align: center; margin: 0; color: var(--accent);">OmniFetch</h1>
+            <p style="text-align: center; font-size: 13px; opacity: 0.8; margin-top: 5px;">Universal Media Pathfinder</p>
             
             <div class="input-row">
-                <input type="text" id="videoUrl" placeholder="YouTube URL or Video ID..." />
+                <input type="text" id="videoUrl" placeholder="Paste link or type video name..." />
                 <button onclick="fetchVideo()" id="startBtn">
                     <span id="btnText">Fetch</span>
                     <div id="spinner" class="spinner"></div>
                 </button>
             </div>
 
-            <div id="errorBox" style="color: #e74c3c; font-size: 13px; text-align: center; display: none; margin-bottom: 10px;"></div>
-
-            <div id="progressWrapper">
-                <div id="progressBar"></div>
+            <div id="progressWrapper" style="display:none; background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 10px;">
+                <div id="progressBar" style="width: 0%; height: 100%; background: #28a745;"></div>
             </div>
-            <div id="progressText" style="text-align: center; font-size: 12px; display: none; color: #28a745;">0%</div>
 
             <div class="result" id="result" style="display:none;">
-                <div class="video-box">
-                    <div id="videoPreview"></div>
-                    
-                    <div class="meta">
-                        <strong id="title" style="font-size: 14px;">Title</strong>
-                        <span id="sizeInfo" style="font-size: 12px; opacity: 0.8;">Size: <span id="fileSize">...</span></span>
-                        <select id="formatSelect">
-                            <option value="1080p">MP4 – 1080p</option>
-                            <option value="720p">MP4 – 720p</option>
-                            <option value="480p" selected>MP4 – 480p</option>
-                            <option value="mp3">MP3 – Audio</option>
-                        </select>
-                        <div style="display: flex; gap: 5px;">
-                            <button onclick="triggerDownload()" style="flex: 2;">Download</button>
-                            <button onclick="copyDownloadLink()" style="flex: 1; background: #6c757d;">📋</button>
-                        </div>
-                    </div>
+                <div id="videoPreview"></div>
+                <div class="meta">
+                    <strong id="title">Media Title</strong>
+                    <select id="formatSelect" style="width: 100%; margin: 10px 0; padding: 10px; border-radius: 5px;">
+                        <option value="1080p">MP4 Video (HD)</option>
+                        <option value="mp3">MP3 Audio (High Quality)</option>
+                    </select>
+                    <button onclick="triggerDownload()" style="width: 100%;">Download Now</button>
                 </div>
             </div>
         </div>
 
-        <div id="historySection" class="card" style="display: none; margin-top: 20px; max-width: 500px;">
-            <h3 style="font-size: 16px; margin-top: 0;">Recent Pack</h3>
-            <div id="historyList"></div>
-            <button id="zipBtn" onclick="downloadAllAsZip()" style="width: 100%; background: #28a745; margin-top: 10px;">📦 Zip All</button>
+        <div class="guide-section">
+            <h2 style="font-size: 18px;">How OmniFetch Works</h2>
+            <div class="guide-grid">
+                <div class="guide-box">
+                    <strong>1. The Path</strong>
+                    Paste a link from YouTube, Vimeo, or DailyMotion. Or just type a song name!
+                </div>
+                <div class="guide-box">
+                    <strong>2. The Fetch</strong>
+                    Our "Pathfinder" logic scans 1,000+ sites to find the best source available.
+                </div>
+                <div class="guide-box">
+                    <strong>3. The File</strong>
+                    Download high-quality MP4 for your library or MP3 for your music player.
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="toast" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 10px 20px; border-radius: 20px; display: none; z-index: 1000;"></div>
-
     <script src="kizito2.js"></script>
+    <script>
+        // Quick Theme Toggle Script
+        const btn = document.getElementById("themeToggle");
+        btn.onclick = () => {
+            const current = document.documentElement.getAttribute("data-theme");
+            const target = current === "light" ? "dark" : "light";
+            document.documentElement.setAttribute("data-theme", target);
+            btn.innerText = target === "light" ? "🌙 Dark Mode" : "☀️ Light Mode";
+        };
+    </script>
 </body>
 </html>

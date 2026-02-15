@@ -1,6 +1,7 @@
 {
-  "name": "video-server",
+  "name": "omnifetch-pathfinder",
   "version": "1.0.0",
+  "description": "Universal Media Pathfinder and Downloader",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,9 +10,15 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  }
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "Michael",
+  "license": "ISC"
 }

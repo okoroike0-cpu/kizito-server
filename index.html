@@ -8,6 +8,9 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.js"></script>
+
     <style>
         /* 1. Theme Variables & Force Application */
         :root {
@@ -36,7 +39,6 @@
             font-family: 'Segoe UI', sans-serif;
         }
 
-        /* 2. Layout */
         .container { 
             display: flex; 
             flex-direction: column; 
@@ -69,16 +71,24 @@
         button:active { transform: scale(0.95); }
         button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* 3. Progress Bar */
         #progressWrapper {
             width: 100%; background: var(--border-color); height: 8px;
             border-radius: 10px; margin: 15px 0; display: none; overflow: hidden;
         }
         #progressBar { width: 0%; height: 100%; background: #28a745; transition: width 0.3s linear; }
 
-        /* 4. Results Section */
-        .video-box { display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px; }
-        .thumb img { width: 120px; border-radius: 8px; }
+        /* Results Section Update */
+        .video-box { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px; }
+        
+        /* ✅ 2. CSPLAYER CONTAINER STYLING */
+        #videoPreview { 
+            width: 100%; 
+            aspect-ratio: 16 / 9; 
+            border-radius: 8px; 
+            overflow: hidden;
+            background: #000;
+        }
+
         .meta { flex: 1; display: flex; flex-direction: column; gap: 8px; }
         
         select { 
@@ -102,7 +112,7 @@
             <div class="status-header">
                 <span style="font-size: 12px; opacity: 0.7;">Server Status: <span id="statusDot"></span></span>
             </div>
-            <h1 style="text-align: center; margin: 0;">Kizito Conv</h1>
+            <h1 style="text-align: center; margin: 0;">Video Converter</h1>
             
             <div class="input-row">
                 <input type="text" id="videoUrl" placeholder="YouTube URL or Video ID..." />
@@ -121,7 +131,8 @@
 
             <div class="result" id="result" style="display:none;">
                 <div class="video-box">
-                    <div class="thumb"><img id="thumbImg" src="" alt="Thumbnail"></div>
+                    <div id="videoPreview"></div>
+                    
                     <div class="meta">
                         <strong id="title" style="font-size: 14px;">Title</strong>
                         <span id="sizeInfo" style="font-size: 12px; opacity: 0.8;">Size: <span id="fileSize">...</span></span>

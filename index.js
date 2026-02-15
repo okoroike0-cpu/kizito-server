@@ -8,20 +8,15 @@ const { spawn, exec } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { 
-    cors: { origin: "*" } 
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
 console.log("🚀 OmniFetch: Scavenger Pathfinder starting...");
-
-if (fs.existsSync('cookies.txt')) {
-    console.log("✅ cookies.txt detected. Pathfinder strength: HIGH.");
-}
 
 app.use(express.static(__dirname));
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
 
-const YTDLP_PATH = './yt-dlp';
+// UPDATED: Removed the './' so it uses the pip-installed version
+const YTDLP_PATH = 'yt-dlp';
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -32,17 +27,10 @@ app.get('/info', (req, res) => {
     const userInput = req.query.url;
     if (!userInput) return res.status(400).json({ error: "Input required" });
 
-    let target;
-    if (userInput.startsWith('http')) {
-        target = `"${userInput}"`;
-    } else {
-        // We use gvsearch1 (Google Video) to find matches on ANY site, not just YT.
-        target = `gvsearch1:"${userInput}"`;
-    }
+    let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
 
-    // Cleaned up the command: Removed the 'android' flags that were causing blocks
-    // Added --no-check-certificates and --geo-bypass to help Render move around blocks
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --geo-bypass --no-check-certificates --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36" ${target}`;
+    // Added --impersonate chrome and kept it universal
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --impersonate chrome ${target}`;
     
     if (fs.existsSync('cookies.txt')) {
         cmd += ` --cookies cookies.txt`;
@@ -50,8 +38,8 @@ app.get('/info', (req, res) => {
 
     exec(cmd, (error, stdout, stderr) => {
         if (error || !stdout) {
-            console.error("Scavenger Error:", stderr);
-            return res.status(500).json({ error: "Access Denied. Try a direct link from Vimeo/Dailymotion instead of searching." });
+            console.error("Scavenger Error Log:", stderr);
+            return res.status(500).json({ error: "Pathfinder failed. Check Render Build Settings." });
         }
 
         try {
@@ -62,10 +50,10 @@ app.get('/info', (req, res) => {
                 videoId: info.id, 
                 url: info.webpage_url,
                 duration: info.duration_string,
-                source: info.extractor_key
+                source: info.extractor_key 
             });
         } catch (err) {
-            res.status(500).json({ error: "Found the file, but couldn't read the map." });
+            res.status(500).json({ error: "Media found, but data is corrupted." });
         }
     });
 });
@@ -79,18 +67,8 @@ app.get('/download', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="OmniFetch_${Date.now()}.${ext}"`);
     res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-    // Cleaned up flags here as well
-    let args = [
-        url, 
-        '-o', '-', 
-        '--no-check-certificates',
-        '--geo-bypass',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36'
-    ];
-
-    if (fs.existsSync('cookies.txt')) {
-        args.push('--cookies', 'cookies.txt');
-    }
+    let args = [url, '-o', '-', '--no-check-certificates', '--impersonate chrome'];
+    if (fs.existsSync('cookies.txt')) args.push('--cookies', 'cookies.txt');
 
     if (format === 'mp3') {
         args.push('-x', '--audio-format', 'mp3');
@@ -102,15 +80,10 @@ app.get('/download', (req, res) => {
 
     const ls = spawn(YTDLP_PATH, args);
     ls.stdout.pipe(res);
-
     ls.stderr.on('data', (data) => {
-        const output = data.toString();
-        const match = output.match(/(\d+\.\d+)%/);
-        if (match && socketId) {
-            io.to(socketId).emit('progress', { percent: match[1] });
-        }
+        const match = data.toString().match(/(\d+\.\d+)%/);
+        if (match && socketId) io.to(socketId).emit('progress', { percent: match[1] });
     });
-
     req.on('close', () => ls.kill());
 });
 

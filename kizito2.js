@@ -56,8 +56,6 @@ socket.on('progress', (data) => {
 
 function formatInput(input) {
     const trimmed = input.trim();
-    // Logic: If it's 11 chars and no dots, treat as YT ID. Otherwise, return as is.
-    // This allows the server to handle names or URLs.
     if (trimmed.length === 11 && !trimmed.includes('.') && !trimmed.includes('/')) {
         return `https://www.youtube.com/watch?v=${trimmed}`;
     }
@@ -95,7 +93,7 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 
 async function fetchVideo() {
     const rawInput = document.getElementById('videoUrl').value;
-    const finalInput = formatInput(rawInput); // URL, ID, or Name
+    const finalInput = formatInput(rawInput); 
     const startBtn = document.getElementById('startBtn');
     const btnText = document.getElementById('btnText');
     const spinner = document.getElementById('spinner');
@@ -126,8 +124,16 @@ async function fetchVideo() {
             const data = await response.json();
 
             if (response.ok) {
+                // UI Update: Main Title
                 document.getElementById('title').innerText = data.title;
                 
+                // UI Update: Source Badge (The new addition!)
+                const sourceBadge = document.getElementById('sourceIndicator');
+                if (sourceBadge && data.source) {
+                    sourceBadge.innerText = data.source.toUpperCase();
+                    sourceBadge.style.display = "inline-block";
+                }
+
                 // ✅ CSPLAYER INTEGRATION
                 if (window.csPlayer && data.videoId) {
                     if (!window.myPlayer) {
@@ -143,7 +149,6 @@ async function fetchVideo() {
 
                 document.getElementById('result').style.display = "block";
                 
-                // Add actual found URL to history so re-fetching is faster
                 addToHistory(data.title, data.thumbnail, data.url || finalInput);
 
                 if(btnText) btnText.innerText = "Fetch";
@@ -151,12 +156,12 @@ async function fetchVideo() {
                 startBtn.disabled = false;
                 return; 
             } else {
-                throw new Error(data.error || "Blocked");
+                throw new Error(data.error || "Server Error");
             }
         } catch (error) {
             attempts++;
             if (attempts > maxRetries) {
-                showError("The Pathfinder is blocked by this site. Try a link from Vimeo or Dailymotion!");
+                showError(`Pathfinder Error: ${error.message}. Please check Render build permissions.`);
             } else {
                 await delay(2000);
             }
@@ -168,7 +173,6 @@ async function fetchVideo() {
 }
 
 function triggerDownload() {
-    // We grab the URL from history or current result
     const rawInput = document.getElementById('videoUrl').value;
     const selection = document.getElementById('formatSelect').value;
     const format = (selection === 'mp3') ? 'mp3' : 'mp4';
@@ -180,7 +184,7 @@ function triggerDownload() {
 }
 
 // ==========================================
-// 4. THEME & HISTORY (UNCHANGED BUT CLEANED)
+// 4. THEME & HISTORY
 // ==========================================
 function addToHistory(title, thumbnail, url) {
     let history = JSON.parse(localStorage.getItem('omni_history') || "[]");

@@ -15,7 +15,7 @@ console.log("🚀 OmniFetch: Scavenger Pathfinder starting...");
 app.use(express.static(__dirname));
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
 
-// UPDATED: Removed the './' so it uses the pip-installed version
+// Use the system command installed via pip
 const YTDLP_PATH = 'yt-dlp';
 
 app.get('/', (req, res) => {
@@ -29,34 +29,49 @@ app.get('/info', (req, res) => {
 
     let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
 
-    // Added --impersonate chrome and kept it universal
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --impersonate chrome ${target}`;
+    // Strategy A: Try with Chrome Disguise
+    let primaryCmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --impersonate chrome --geo-bypass ${target}`;
     
     if (fs.existsSync('cookies.txt')) {
-        cmd += ` --cookies cookies.txt`;
+        primaryCmd += ` --cookies cookies.txt`;
     }
 
-    exec(cmd, (error, stdout, stderr) => {
+    exec(primaryCmd, (error, stdout, stderr) => {
         if (error || !stdout) {
-            console.error("Scavenger Error Log:", stderr);
-            return res.status(500).json({ error: "Pathfinder failed. Check Render Build Settings." });
-        }
-
-        try {
-            const info = JSON.parse(stdout);
-            res.json({ 
-                title: info.title, 
-                thumbnail: info.thumbnail,
-                videoId: info.id, 
-                url: info.webpage_url,
-                duration: info.duration_string,
-                source: info.extractor_key 
+            console.log("⚠️ Primary path blocked or missing 'chrome' target. Trying Safe Mode...");
+            
+            // Strategy B: Fallback to Basic Mode (No impersonation)
+            let fallbackCmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates ${target}`;
+            if (fs.existsSync('cookies.txt')) fallbackCmd += ` --cookies cookies.txt`;
+            
+            return exec(fallbackCmd, (err2, stdout2, stderr2) => {
+                processResult(err2, stdout2, stderr2, res);
             });
-        } catch (err) {
-            res.status(500).json({ error: "Media found, but data is corrupted." });
         }
+        processResult(error, stdout, stderr, res);
     });
 });
+
+// Helper function to handle the JSON data
+function processResult(error, stdout, stderr, res) {
+    if (error || !stdout) {
+        console.error("Scavenger Error Log:", stderr);
+        return res.status(500).json({ error: "Pathfinder failed. This video might be too heavily guarded." });
+    }
+    try {
+        const info = JSON.parse(stdout);
+        res.json({ 
+            title: info.title, 
+            thumbnail: info.thumbnail,
+            videoId: info.id, 
+            url: info.webpage_url,
+            duration: info.duration_string,
+            source: info.extractor_key // Returns 'Youtube', 'Vimeo', etc.
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Media found, but data is corrupted." });
+    }
+}
 
 // --- 2. THE FETCHER: DOWNLOAD ---
 app.get('/download', (req, res) => {
@@ -67,7 +82,7 @@ app.get('/download', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="OmniFetch_${Date.now()}.${ext}"`);
     res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-    let args = [url, '-o', '-', '--no-check-certificates', '--impersonate chrome'];
+    let args = [url, '-o', '-', '--no-check-certificates'];
     if (fs.existsSync('cookies.txt')) args.push('--cookies', 'cookies.txt');
 
     if (format === 'mp3') {

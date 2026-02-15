@@ -14,7 +14,7 @@ const io = new Server(server, {
 
 console.log("🚀 Video Converter Server starting...");
 if (fs.existsSync('cookies.txt')) {
-    console.log("✅ cookies.txt found and loaded.");
+    console.log("✅ cookies.txt found.");
 }
 
 app.use(express.static(__dirname));
@@ -35,8 +35,8 @@ app.get('/info', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) return res.status(400).json({ error: "URL is required" });
 
-    // FIXED: Removed --allow-unsecure-commands. Added impersonate for extra stealth.
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" --extractor-args "youtube:player-client=web,default" "${videoUrl}"`;
+    // SNEAKY UPDATE: Using 'ios' client which is harder for YouTube to block
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --extractor-args "youtube:player-client=ios,web;player-params=2" "${videoUrl}"`;
     
     if (fs.existsSync('cookies.txt')) {
         cmd += ` --cookies cookies.txt`;
@@ -72,8 +72,8 @@ app.get('/download', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="video.${ext}"`);
     res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-    // FIXED: Match the info route flags
-    let args = [url, '-o', '-', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36', '--extractor-args', 'youtube:player-client=web,default'];
+    // SNEAKY UPDATE: Match info route
+    let args = [url, '-o', '-', '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', '--extractor-args', 'youtube:player-client=ios,web;player-params=2'];
 
     if (fs.existsSync('cookies.txt')) {
         args.push('--cookies', 'cookies.txt');

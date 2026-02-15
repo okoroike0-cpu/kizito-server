@@ -12,6 +12,12 @@ const io = new Server(server, {
     cors: { origin: "*" } 
 });
 
+// LOG CHECK: Confirming the name change and cookie status
+console.log("🚀 Video Converter Server starting...");
+if (fs.existsSync('cookies.txt')) {
+    console.log("✅ cookies.txt is loaded.");
+}
+
 app.use(express.static(__dirname));
 app.use(cors({
     origin: '*',
@@ -30,9 +36,9 @@ app.get('/info', (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) return res.status(400).json({ error: "URL is required" });
 
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist "${videoUrl}"`;
+    // EXTRA SNEAKY: Added User-Agent and extractor-args
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --allow-unsecure-commands --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --extractor-args "youtube:player-client=web,default" "${videoUrl}"`;
     
-    // UPDATED: Now looks for cookies.txt
     if (fs.existsSync('cookies.txt')) {
         cmd += ` --cookies cookies.txt`;
     }
@@ -40,7 +46,7 @@ app.get('/info', (req, res) => {
     exec(cmd, (error, stdout, stderr) => {
         if (error) {
             console.error("Info Error:", stderr);
-            return res.status(500).json({ error: "YouTube blocked the request. Update cookies.txt!" });
+            return res.status(500).json({ error: "YouTube is blocking the server. Please refresh cookies.txt on Render!" });
         }
 
         try {
@@ -67,9 +73,9 @@ app.get('/download', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="video.${ext}"`);
     res.setHeader('Content-Type', format === 'mp3' ? 'audio/mpeg' : 'video/mp4');
 
-    let args = [url, '-o', '-'];
+    // EXTRA SNEAKY: Match the flags from the /info route
+    let args = [url, '-o', '-', '--allow-unsecure-commands', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', '--extractor-args', 'youtube:player-client=web,default'];
 
-    // UPDATED: Now adds cookies.txt to arguments
     if (fs.existsSync('cookies.txt')) {
         args.push('--cookies', 'cookies.txt');
     }
@@ -103,7 +109,7 @@ app.get('/download', (req, res) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log(`🚀 Kizito Server (yt-dlp) running on port ${PORT}`);
+    console.log(`🚀 Video Converter Server (yt-dlp) running on port ${PORT}`);
 });

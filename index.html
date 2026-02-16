@@ -122,7 +122,9 @@
         <div class="card">
             <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
                 <div id="statusDot" class="status-dot"></div>
-                <h1 style="margin: 0; color: var(--accent);">OmniFetch</h1>
+                <a href="/" style="text-decoration: none;">
+                    <h1 style="margin: 0; color: var(--accent); cursor: pointer;">OmniFetch</h1>
+                </a>
             </div>
             <p style="text-align: center; font-size: 13px; opacity: 0.8; margin-top: 5px;">Universal Media Pathfinder</p>
             
@@ -150,8 +152,11 @@
                     </div>
                     
                     <select id="formatSelect" style="width: 100%; margin: 10px 0; padding: 12px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);">
-                        <option value="1080p">MP4 Video (HD)</option>
-                        <option value="720p">MP4 Video (720p)</option>
+                        <option value="1080">MP4 Video (HD)</option>
+                        <option value="720">MP4 Video (720p)</option>
+                        <option value="480" selected>Medium (480p)</option>
+                        <option value="360">Low (360p)</option>
+                        <option value="240">Save Data (240p)</option>
                         <option value="mp3">MP3 Audio (High Quality)</option>
                     </select>
                     <button onclick="triggerDownload()" style="width: 100%; background: #28a745;">Download Now</button>

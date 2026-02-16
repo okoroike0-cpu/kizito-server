@@ -38,9 +38,18 @@ socket.on('progress', (data) => {
         
         const p = Math.round(data.percent);
         bar.style.width = p + "%";
-        text.innerText = p < 100 ? `Fetching: ${p}%` : "✅ Ready!";
+        
+        // UPDATED: Show "Finished" when 100%
+        if (p < 100) {
+            text.innerText = `Fetching: ${p}%`;
+        } else {
+            text.innerText = "✅ Download Finished!";
+            showToast("🚀 Your file is ready! Check your downloads.");
+            
+            // Trigger vibration for mobile users if supported
+            if (navigator.vibrate) navigator.vibrate(200);
 
-        if (p >= 100) {
+            // Hide the progress bar after 4 seconds
             setTimeout(() => { 
                 wrapper.style.display = "none"; 
                 text.style.display = "none";
@@ -82,7 +91,7 @@ function showToast(message) {
         toast.style.transition = "opacity 0.5s ease";
         toast.style.opacity = "0";
         setTimeout(() => { toast.style.display = "none"; }, 500);
-    }, 3000);
+    }, 4000); // Kept on screen slightly longer for readability
 }
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -124,17 +133,14 @@ async function fetchVideo() {
             const data = await response.json();
 
             if (response.ok) {
-                // UI Update: Main Title
                 document.getElementById('title').innerText = data.title;
                 
-                // UI Update: Source Badge (The new addition!)
                 const sourceBadge = document.getElementById('sourceIndicator');
                 if (sourceBadge && data.source) {
                     sourceBadge.innerText = data.source.toUpperCase();
                     sourceBadge.style.display = "inline-block";
                 }
 
-                // ✅ CSPLAYER INTEGRATION
                 if (window.csPlayer && data.videoId) {
                     if (!window.myPlayer) {
                         window.myPlayer = new csPlayer("#videoPreview", {
@@ -148,7 +154,6 @@ async function fetchVideo() {
                 }
 
                 document.getElementById('result').style.display = "block";
-                
                 addToHistory(data.title, data.thumbnail, data.url || finalInput);
 
                 if(btnText) btnText.innerText = "Fetch";
@@ -161,7 +166,7 @@ async function fetchVideo() {
         } catch (error) {
             attempts++;
             if (attempts > maxRetries) {
-                showError(`Pathfinder Error: ${error.message}. Please check Render build permissions.`);
+                showError(`Pathfinder Error: ${error.message}`);
             } else {
                 await delay(2000);
             }
@@ -179,6 +184,7 @@ function triggerDownload() {
     
     if(!rawInput) return showError("No media loaded!");
     
+    // Quality selection is passed here (240, 360, 480, 720, 1080)
     const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(rawInput)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
     window.location.href = dlUrl; 
 }

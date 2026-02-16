@@ -24,10 +24,8 @@ app.get('/info', (req, res) => {
     const userInput = req.query.url;
     if (!userInput) return res.status(400).json({ error: "Input required" });
 
-    // Quote the input to prevent errors
     let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
 
-    // We try a simplified command first. If this fails, the server is likely IP-blocked.
     let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --geo-bypass ${target}`;
     
     if (fs.existsSync('cookies.txt')) {
@@ -56,7 +54,7 @@ app.get('/info', (req, res) => {
     });
 });
 
-// --- THE DOWNLOAD LOGIC ---
+// --- THE DOWNLOAD LOGIC (Now supports 240p - 1080p) ---
 app.get('/download', (req, res) => {
     const { url, quality, format, socketId } = req.query;
     if (!url) return res.status(400).send("Source URL required");
@@ -71,8 +69,11 @@ app.get('/download', (req, res) => {
     if (format === 'mp3') {
         args.push('-x', '--audio-format', 'mp3');
     } else {
-        let formatSelection = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
-        if (quality === '1080p') formatSelection = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        // h grabs the selection (240, 360, 480, 720, 1080)
+        let h = quality || '480'; 
+        // Logic: Try to find best MP4 with height <= user choice
+        let formatSelection = `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/best[ext=mp4]/best`;
+        
         args.push('-f', formatSelection);
     }
 

@@ -10,70 +10,53 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-console.log("🚀 OmniFetch: Scavenger Pathfinder starting...");
-
 app.use(express.static(__dirname));
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
 
-// Use the system command installed via pip
 const YTDLP_PATH = 'yt-dlp';
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// --- 1. THE SCAVENGER: INFO & SEARCH ---
+// --- THE SCAVENGER LOGIC ---
 app.get('/info', (req, res) => {
     const userInput = req.query.url;
     if (!userInput) return res.status(400).json({ error: "Input required" });
 
+    // Quote the input to prevent errors
     let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
 
-    // Strategy A: Try with Chrome Disguise
-    let primaryCmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --impersonate chrome --geo-bypass ${target}`;
+    // We try a simplified command first. If this fails, the server is likely IP-blocked.
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --geo-bypass ${target}`;
     
     if (fs.existsSync('cookies.txt')) {
-        primaryCmd += ` --cookies cookies.txt`;
+        cmd += ` --cookies cookies.txt`;
     }
 
-    exec(primaryCmd, (error, stdout, stderr) => {
+    exec(cmd, (error, stdout, stderr) => {
         if (error || !stdout) {
-            console.log("⚠️ Primary path blocked or missing 'chrome' target. Trying Safe Mode...");
-            
-            // Strategy B: Fallback to Basic Mode (No impersonation)
-            let fallbackCmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates ${target}`;
-            if (fs.existsSync('cookies.txt')) fallbackCmd += ` --cookies cookies.txt`;
-            
-            return exec(fallbackCmd, (err2, stdout2, stderr2) => {
-                processResult(err2, stdout2, stderr2, res);
-            });
+            console.error("Scavenger Error Log:", stderr);
+            return res.status(500).json({ error: "Pathfinder failed. YouTube might be blocking the server IP. Try a direct link from Vimeo!" });
         }
-        processResult(error, stdout, stderr, res);
+
+        try {
+            const info = JSON.parse(stdout);
+            res.json({ 
+                title: info.title, 
+                thumbnail: info.thumbnail,
+                videoId: info.id, 
+                url: info.webpage_url,
+                duration: info.duration_string,
+                source: info.extractor_key 
+            });
+        } catch (err) {
+            res.status(500).json({ error: "Media found, but data is corrupted." });
+        }
     });
 });
 
-// Helper function to handle the JSON data
-function processResult(error, stdout, stderr, res) {
-    if (error || !stdout) {
-        console.error("Scavenger Error Log:", stderr);
-        return res.status(500).json({ error: "Pathfinder failed. This video might be too heavily guarded." });
-    }
-    try {
-        const info = JSON.parse(stdout);
-        res.json({ 
-            title: info.title, 
-            thumbnail: info.thumbnail,
-            videoId: info.id, 
-            url: info.webpage_url,
-            duration: info.duration_string,
-            source: info.extractor_key // Returns 'Youtube', 'Vimeo', etc.
-        });
-    } catch (err) {
-        res.status(500).json({ error: "Media found, but data is corrupted." });
-    }
-}
-
-// --- 2. THE FETCHER: DOWNLOAD ---
+// --- THE DOWNLOAD LOGIC ---
 app.get('/download', (req, res) => {
     const { url, quality, format, socketId } = req.query;
     if (!url) return res.status(400).send("Source URL required");
@@ -103,4 +86,4 @@ app.get('/download', (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 OmniFetch Scavenger running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 OmniFetch running on port ${PORT}`));

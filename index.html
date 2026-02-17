@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniFetch | Universal Media Pathfinder</title>
     
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
+
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.css">
@@ -36,30 +38,17 @@
         body { 
             background-color: var(--bg-color); 
             color: var(--text-color);
-            margin: 0; 
-            padding: 0;
+            margin: 0; padding: 0;
             transition: 0.3s;
             font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
-        .container { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 40px 15px; 
-        }
+        .container { display: flex; flex-direction: column; align-items: center; padding: 40px 15px; }
 
-        /* --- INTERACTIVE HEADER BOX SHADOW --- */
         .header-box {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 10px 20px;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            text-decoration: none;
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 10px 20px; border-radius: 12px;
+            transition: all 0.3s ease; cursor: pointer; text-decoration: none;
             user-select: none;
         }
 
@@ -69,42 +58,10 @@
             transform: translateY(-2px);
         }
 
-        .header-box:active {
-            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.1);
-            transform: translateY(1px);
-        }
-
         .card { 
-            background: var(--card-bg); 
-            padding: 30px; 
-            border-radius: 15px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
-            width: 100%; 
-            max-width: 500px;
-            margin-bottom: 20px;
-            position: relative;
-        }
-
-        /* --- HOW IT WORKS SECTION STYLES --- */
-        .guide-section { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
-        .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .step-card { 
-            background: var(--step-bg); 
-            padding: 15px; 
-            border-radius: 10px; 
-            font-size: 13px; 
-            border-left: 4px solid var(--accent);
-            line-height: 1.4;
-        }
-
-        /* --- UNIVERSAL MEDIA QUERY FOR MOBILE --- */
-        @media (max-width: 600px) {
-            .container { padding: 20px 10px; }
-            .card { padding: 20px; border-radius: 10px; }
-            h1 { font-size: 24px; }
-            .input-row { flex-direction: column; }
-            button, input, select { width: 100% !important; box-sizing: border-box; }
-            .guide-grid { grid-template-columns: 1fr; } /* Stack guide steps on mobile */
+            background: var(--card-bg); padding: 30px; border-radius: 15px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 500px;
+            margin-bottom: 20px; position: relative;
         }
 
         .input-row { display: flex; gap: 10px; margin: 20px 0; }
@@ -119,17 +76,19 @@
             display: flex; align-items: center; justify-content: center;
         }
 
-        /* --- PULSING DOWNLOAD BUTTON --- */
         #downloadBtn {
-            width: 100%; 
-            background: #28a745;
+            width: 100%; background: #28a745;
             transition: transform 0.2s ease;
             animation: pulse-green 2s infinite;
         }
 
-        #downloadBtn:hover {
-            transform: scale(1.02);
+        /* Share Button Style */
+        .share-btn {
+            background: none; border: 1px solid var(--border-color);
+            color: var(--text-color); padding: 8px 15px; font-size: 12px;
+            margin-top: 15px; width: 100%; opacity: 0.8;
         }
+        .share-btn:hover { opacity: 1; background: var(--step-bg); }
 
         @keyframes pulse-green {
             0% { box-shadow: 0 0 0 0 var(--success-glow); }
@@ -137,18 +96,27 @@
             100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
         }
 
-        .status-dot {
-            height: 8px; width: 8px; border-radius: 50%;
-            display: inline-block; margin-right: 5px;
-            background-color: var(--status-offline);
+        .guide-section { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
+        .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .step-card { 
+            background: var(--step-bg); padding: 15px; border-radius: 10px; 
+            font-size: 13px; border-left: 4px solid var(--accent); line-height: 1.4;
         }
 
+        @media (max-width: 600px) {
+            .container { padding: 20px 10px; }
+            .card { padding: 20px; border-radius: 10px; }
+            h1 { font-size: 24px; }
+            .input-row { flex-direction: column; }
+            button, input, select { width: 100% !important; box-sizing: border-box; }
+            .guide-grid { grid-template-columns: 1fr; }
+        }
+
+        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; background-color: var(--status-offline); }
         #videoPreview { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
-        
         .spinner { border: 2px solid #ffffff4d; border-top: 2px solid #fff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: none; margin-left: 10px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        /* History Styling */
         #historySection { width: 100%; max-width: 500px; margin-top: 10px; display: none; }
         .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .history-item { 
@@ -156,9 +124,6 @@
             margin-bottom: 10px; cursor: pointer; border: 1px solid var(--border-color);
             transition: 0.2s; font-size: 14px;
         }
-        .history-item:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .clear-btn { background: none; color: var(--status-offline); font-size: 11px; padding: 5px; border: 1px solid transparent; opacity: 0.7; }
-        .clear-btn:hover { border-color: var(--status-offline); opacity: 1; }
     </style>
 </head>
 <body>
@@ -205,33 +170,23 @@
                     <button id="downloadBtn" onclick="triggerDownload()">Download Now</button>
                 </div>
             </div>
+
+            <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
         </div>
 
         <div class="guide-section">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">How it works</h3>
+            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase;">How it works</h3>
             <div class="guide-grid">
-                <div class="step-card">
-                    <strong>1. Dispatch</strong><br>
-                    Enter a link or name. Our scavenger bots start the hunt.
-                </div>
-                <div class="step-card">
-                    <strong>2. Scavenge</strong><br>
-                    We bypass trackers to find the cleanest high-speed stream.
-                </div>
-                <div class="step-card">
-                    <strong>3. Convert</strong><br>
-                    Files are processed into your chosen format instantly.
-                </div>
-                <div class="step-card">
-                    <strong>4. Claim</strong><br>
-                    Download your media directly to your device. No ads.
-                </div>
+                <div class="step-card"><strong>1. Dispatch</strong><br>Enter a link or name. Our scavenger bots start the hunt.</div>
+                <div class="step-card"><strong>2. Scavenge</strong><br>We bypass trackers to find the cleanest high-speed stream.</div>
+                <div class="step-card"><strong>3. Convert</strong><br>Files are processed into your chosen format instantly.</div>
+                <div class="step-card"><strong>4. Claim</strong><br>Download your media directly to your device. No ads.</div>
             </div>
         </div>
 
         <div id="historySection">
             <div class="history-header">
-                <h3 style="font-size: 14px; opacity: 0.7; margin: 0; text-transform: uppercase; letter-spacing: 1px;">Recent Fetches</h3>
+                <h3 style="font-size: 14px; opacity: 0.7; margin: 0; text-transform: uppercase;">Recent Fetches</h3>
                 <button onclick="clearHistory()" class="clear-btn">Clear All</button>
             </div>
             <div id="historyList"></div>
@@ -239,7 +194,9 @@
     </div>
 
     <script>
-        const socket = io();
+        // Updated for public use
+        const socket = io("https://kizito-server.onrender.com"); 
+
         const statusDot = document.getElementById('statusDot');
         const historySection = document.getElementById('historySection');
         const historyList = document.getElementById('historyList');
@@ -290,6 +247,19 @@
             } finally {
                 spinner.style.display = "none";
                 btnText.innerText = "Fetch";
+            }
+        }
+
+        function shareSite() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'OmniFetch',
+                    text: 'Check out this universal media pathfinder!',
+                    url: window.location.href
+                });
+            } else {
+                navigator.clipboard.writeText(window.location.href);
+                alert("Link copied to clipboard!");
             }
         }
 

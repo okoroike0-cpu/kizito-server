@@ -21,7 +21,6 @@
             --step-bg: #eef2f3;
             --status-offline: #e74c3c;
             --status-online: #2ecc71;
-            /* Added success glow variable */
             --success-glow: rgba(46, 204, 113, 0.6);
         }
 
@@ -86,12 +85,26 @@
             position: relative;
         }
 
+        /* --- HOW IT WORKS SECTION STYLES --- */
+        .guide-section { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
+        .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .step-card { 
+            background: var(--step-bg); 
+            padding: 15px; 
+            border-radius: 10px; 
+            font-size: 13px; 
+            border-left: 4px solid var(--accent);
+            line-height: 1.4;
+        }
+
+        /* --- UNIVERSAL MEDIA QUERY FOR MOBILE --- */
         @media (max-width: 600px) {
             .container { padding: 20px 10px; }
             .card { padding: 20px; border-radius: 10px; }
             h1 { font-size: 24px; }
             .input-row { flex-direction: column; }
-            button { width: 100%; }
+            button, input, select { width: 100% !important; box-sizing: border-box; }
+            .guide-grid { grid-template-columns: 1fr; } /* Stack guide steps on mobile */
         }
 
         .input-row { display: flex; gap: 10px; margin: 20px 0; }
@@ -190,6 +203,28 @@
                         <option value="mp3">MP3 Audio (High Quality)</option>
                     </select>
                     <button id="downloadBtn" onclick="triggerDownload()">Download Now</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">How it works</h3>
+            <div class="guide-grid">
+                <div class="step-card">
+                    <strong>1. Dispatch</strong><br>
+                    Enter a link or name. Our scavenger bots start the hunt.
+                </div>
+                <div class="step-card">
+                    <strong>2. Scavenge</strong><br>
+                    We bypass trackers to find the cleanest high-speed stream.
+                </div>
+                <div class="step-card">
+                    <strong>3. Convert</strong><br>
+                    Files are processed into your chosen format instantly.
+                </div>
+                <div class="step-card">
+                    <strong>4. Claim</strong><br>
+                    Download your media directly to your device. No ads.
                 </div>
             </div>
         </div>

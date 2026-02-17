@@ -21,6 +21,8 @@
             --step-bg: #eef2f3;
             --status-offline: #e74c3c;
             --status-online: #2ecc71;
+            /* Added success glow variable */
+            --success-glow: rgba(46, 204, 113, 0.6);
         }
 
         [data-theme="dark"] {
@@ -104,6 +106,24 @@
             display: flex; align-items: center; justify-content: center;
         }
 
+        /* --- PULSING DOWNLOAD BUTTON --- */
+        #downloadBtn {
+            width: 100%; 
+            background: #28a745;
+            transition: transform 0.2s ease;
+            animation: pulse-green 2s infinite;
+        }
+
+        #downloadBtn:hover {
+            transform: scale(1.02);
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 var(--success-glow); }
+            70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+
         .status-dot {
             height: 8px; width: 8px; border-radius: 50%;
             display: inline-block; margin-right: 5px;
@@ -169,7 +189,7 @@
                         <option value="240">Save Data (240p)</option>
                         <option value="mp3">MP3 Audio (High Quality)</option>
                     </select>
-                    <button id="downloadBtn" onclick="triggerDownload()" style="width: 100%; background: #28a745;">Download Now</button>
+                    <button id="downloadBtn" onclick="triggerDownload()">Download Now</button>
                 </div>
             </div>
         </div>

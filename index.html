@@ -86,17 +86,6 @@
             background-color: var(--status-offline);
         }
 
-        #sourceIndicator {
-            background: var(--accent);
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            display: none;
-            text-transform: uppercase;
-        }
-
         .guide-section { max-width: 800px; width: 100%; margin-top: 30px; text-align: center; }
         .guide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
         .guide-box { background: var(--step-bg); padding: 20px; border-radius: 10px; font-size: 14px; }
@@ -144,7 +133,6 @@
                 <div class="meta">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                         <strong id="title" style="flex: 1; margin-right: 10px;">Media Title</strong>
-                        <span id="sourceIndicator">YT</span>
                     </div>
                     
                     <select id="formatSelect" style="width: 100%; margin: 10px 0; padding: 12px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);">
@@ -160,11 +148,6 @@
             </div>
         </div>
 
-        <div id="historySection" style="display: none;">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 10px;">RECENT FETCHES</h3>
-            <div id="historyList"></div>
-        </div>
-
         <div class="guide-section">
             <h2 style="font-size: 18px;">How OmniFetch Works</h2>
             <div class="guide-grid">
@@ -178,13 +161,37 @@
                 </div>
                 <div class="guide-box">
                     <strong>3. The File</strong>
-                    Download high-quality MP4 for your library or MP3 for your music player.
+                    Download high-quality MP4 or MP3 for your library.
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // Socket Connection Logic
+        const socket = io();
+        const statusDot = document.getElementById('statusDot');
+
+        socket.on('connect', () => {
+            statusDot.style.backgroundColor = 'var(--status-online)';
+        });
+
+        socket.on('disconnect', () => {
+            statusDot.style.backgroundColor = 'var(--status-offline)';
+        });
+
+        // Listen for progress updates
+        socket.on('progress', (data) => {
+            const progressBar = document.getElementById('progressBar');
+            const progressWrapper = document.getElementById('progressWrapper');
+            const progressText = document.getElementById('progressText');
+            
+            progressWrapper.style.display = 'block';
+            progressText.style.display = 'block';
+            progressBar.style.width = data.percent + '%';
+            progressText.innerText = `Processing: ${data.percent}%`;
+        });
+
         async function fetchVideo() {
             const urlInput = document.getElementById('videoUrl').value.trim();
             const btnText = document.getElementById('btnText');
@@ -197,39 +204,33 @@
                 return;
             }
 
-            // Reset UI
             errorBox.style.display = 'none';
             btnText.innerText = "Searching...";
             spinner.style.display = "inline-block";
 
-            // SEARCH LOGIC: If it's not a URL, add the 'ytsearch1:' prefix
             let finalPayloadUrl = urlInput;
             if (!urlInput.startsWith('http')) {
                 finalPayloadUrl = `ytsearch1:${urlInput}`;
             }
 
             try {
-                const response = await fetch('/api/info', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: finalPayloadUrl })
-                });
-
+                // FIXED: Using GET request as required by your index.js
+                const response = await fetch(`/api/info?url=${encodeURIComponent(finalPayloadUrl)}`);
+                
+                // This line will now succeed because the server sends JSON
                 const data = await response.json();
 
                 if (data.success) {
                     document.getElementById('title').innerText = data.title;
                     document.getElementById('videoPreview').innerHTML = `<img src="${data.thumbnail}" style="width:100%; height:100%; object-fit:cover;">`;
                     resultArea.style.display = 'block';
-                    btnText.innerText = "Fetch";
-                    
-                    // Save the hidden URL for the download trigger
-                    window.currentDownloadUrl = data.originalUrl || finalPayloadUrl;
+                    window.currentDownloadUrl = data.url; 
                 } else {
-                    showError(data.message || "Could not find media.");
+                    showError(data.error || "Could not find media.");
                 }
             } catch (err) {
-                showError("Connection lost. Is the server running?");
+                console.error(err);
+                showError("Pathfinder Error: Server did not respond correctly.");
             } finally {
                 spinner.style.display = "none";
                 btnText.innerText = "Fetch";
@@ -239,11 +240,12 @@
         function triggerDownload() {
             const format = document.getElementById('formatSelect').value;
             const url = window.currentDownloadUrl;
+            const socketId = socket.id;
             
-            if(!url) return alert("Fetch a video first!");
+            if(!url) return showError("Fetch a video first!");
             
-            // Redirect to your server's download endpoint
-            window.location.href = `/download?url=${encodeURIComponent(url)}&format=${format}`;
+            // Redirect to download endpoint with the socketId for progress tracking
+            window.location.href = `/download?url=${encodeURIComponent(url)}&format=${format}&socketId=${socketId}`;
         }
 
         function showError(msg) {
@@ -252,7 +254,6 @@
             errorBox.style.display = 'block';
         }
 
-        // Theme Toggle
         const themeBtn = document.getElementById("themeToggle");
         themeBtn.onclick = () => {
             const current = document.documentElement.getAttribute("data-theme");

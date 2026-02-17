@@ -79,8 +79,16 @@
         }
         #startBtn:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
+        /* --- UPDATED DOWNLOAD BUTTON RADIUS --- */
         #downloadBtn {
-            width: 100%; background: #28a745;
+            width: 100%; 
+            background: #28a745;
+            padding: 12px 25px;
+            border: none;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px; /* Matches the share button radius */
             transition: transform 0.2s ease;
             animation: pulse-green 2s infinite;
         }
@@ -118,7 +126,7 @@
             .card { padding: 20px; border-radius: 10px; }
             h1 { font-size: 24px; }
             .input-row { flex-direction: column; }
-            #startBtn, input, select { width: 100% !important; box-sizing: border-box; }
+            #startBtn, #downloadBtn, input, select { width: 100% !important; box-sizing: border-box; }
             .guide-grid { grid-template-columns: 1fr; }
         }
 

@@ -19,13 +19,18 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// --- THE UNIVERSAL SCAVENGER LOGIC ---
-app.get('/api/info', (req, res) => { // Added /api/ prefix to match frontend
+// --- THE UNIVERSAL SCAVENGER LOGIC (STABILIZED) ---
+app.get('/api/info', (req, res) => {
     const userInput = req.query.url;
     if (!userInput) return res.status(400).json({ error: "Input required" });
 
     let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
-    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --geo-bypass --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" --referer "https://www.google.com" ${target}`;
+    
+    // Michael, I added '--impersonate chrome' and '--client-certificate' flags to bypass 403 errors
+    let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --geo-bypass ` +
+              `--impersonate chrome ` +
+              `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" ` +
+              `--referer "https://www.google.com" ${target}`;
     
     if (fs.existsSync('cookies.txt')) {
         cmd += ` --cookies cookies.txt`;
@@ -34,7 +39,11 @@ app.get('/api/info', (req, res) => { // Added /api/ prefix to match frontend
     exec(cmd, (error, stdout, stderr) => {
         if (error || !stdout) {
             console.error("Scavenger Error Log:", stderr);
-            return res.status(500).json({ error: "Pathfinder failed." });
+            // Help Michael identify if it's a block or a real failure
+            const isBlocked = stderr.includes("403") || stderr.includes("Forbidden");
+            return res.status(500).json({ 
+                error: isBlocked ? "Site access forbidden (403). Try a different link." : "Pathfinder failed." 
+            });
         }
         try {
             const info = JSON.parse(stdout);
@@ -54,7 +63,6 @@ app.get('/api/info', (req, res) => { // Added /api/ prefix to match frontend
 });
 
 // --- THE SECURE TMDB PROXY ---
-// Michael, this is what fuels your Trending Today grid safely
 app.get('/api/trending', async (req, res) => {
     const TMDB_TOKEN = process.env.TMDB_TOKEN;
 
@@ -64,7 +72,6 @@ app.get('/api/trending', async (req, res) => {
     }
 
     try {
-        // Using global fetch (available in Node 18+)
         const response = await fetch('https://api.themoviedb.org/3/trending/movie/day?language=en-US', {
             method: 'GET',
             headers: {
@@ -94,7 +101,8 @@ app.get('/download', (req, res) => {
 
     let args = [
         url, '-o', '-', '--no-check-certificates', '--no-part',
-        '--user-agent', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        '--impersonate', 'chrome',
+        '--user-agent', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     ];
 
     if (fs.existsSync('cookies.txt')) args.push('--cookies', 'cookies.txt');

@@ -60,11 +60,9 @@ socket.on('progress', (data) => {
 
 function formatInput(input) {
     const trimmed = input.trim();
-    // If it's a 11 char ID, assume YouTube
     if (trimmed.length === 11 && !trimmed.includes('.') && !trimmed.includes('/')) {
         return `https://www.youtube.com/watch?v=${trimmed}`;
     }
-    // If it's not a URL (doesn't start with http), wrap it in a search command
     if (!trimmed.startsWith('http')) {
         return `gvsearch1:${trimmed} movie`;
     }
@@ -92,7 +90,6 @@ async function fetchVideo() {
         return;
     }
 
-    // Apply the gvsearch1 logic if it's just a name
     const finalInput = formatInput(rawInput); 
     
     const startBtn = document.getElementById('startBtn');
@@ -123,7 +120,6 @@ async function fetchVideo() {
                 document.getElementById('title').innerText = data.title;
                 window.currentDownloadUrl = data.url || finalInput;
 
-                // Load preview if possible
                 if (window.csPlayer && data.videoId) {
                     if (!window.myPlayer) {
                         window.myPlayer = new csPlayer("#videoPreview", {
@@ -169,7 +165,6 @@ function triggerDownload() {
     dlBtn.innerText = "🚀 Locating High-Speed Link...";
     dlBtn.disabled = true;
 
-    // Use the downloader gateway
     const downloadGateway = `https://getvideo.pwn.sh/?url=${encodeURIComponent(url)}`;
     window.open(downloadGateway, '_blank');
 
@@ -223,8 +218,34 @@ window.reFetch = (query) => {
 };
 
 // ==========================================
-// 5. SECURE TRENDING GRID
+// 5. SECURE GRID LOGIC (TRENDING & SEARCH)
 // ==========================================
+
+// Michael, this function searches for movies using your new backend proxy
+async function searchMovies() {
+    const searchInput = document.getElementById('searchInput'); 
+    const grid = document.getElementById('trendingGrid');
+    const query = searchInput.value.trim();
+
+    if (!query) return loadTrendingMovies(); // Reset to trending if empty
+
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">Searching for movies...</div>';
+
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (!data.results || data.results.length === 0) {
+            grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">No results found.</p>';
+            return;
+        }
+        renderMovieGrid(data.results);
+    } catch (err) {
+        console.error("Search Error:", err);
+        showError("Search failed.");
+    }
+}
+
 async function loadTrendingMovies() {
     const grid = document.getElementById('trendingGrid');
     if (!grid) return;
@@ -232,24 +253,26 @@ async function loadTrendingMovies() {
     try {
         const response = await fetch(`${BACKEND_URL}/api/trending`);
         const data = await response.json();
-        
-        if (!data.results) return;
-
-        grid.innerHTML = data.results.slice(0, 10).map(movie => {
-            const safeTitle = movie.title.replace(/'/g, "\\'");
-            return `
-                <div class="movie-card" onclick="reFetch('${safeTitle}')">
-                    <img class="movie-poster" 
-                         src="https://image.tmdb.org/t/p/w500${movie.poster_path}" 
-                         onerror="this.src='https://via.placeholder.com/500x750?text=No+Poster'">
-                    <div class="movie-info">${movie.title}</div>
-                </div>
-            `;
-        }).join('');
-
+        if (data.results) renderMovieGrid(data.results);
     } catch (err) {
         console.error("Trending Error:", err);
     }
+}
+
+// Function to actually draw the posters in the grid
+function renderMovieGrid(movies) {
+    const grid = document.getElementById('trendingGrid');
+    grid.innerHTML = movies.slice(0, 10).map(movie => {
+        const safeTitle = movie.title.replace(/'/g, "\\'");
+        return `
+            <div class="movie-card" onclick="reFetch('${safeTitle}')">
+                <img class="movie-poster" 
+                     src="https://image.tmdb.org/t/p/w500${movie.poster_path}" 
+                     onerror="this.src='https://via.placeholder.com/500x750?text=No+Poster'">
+                <div class="movie-info">${movie.title}</div>
+            </div>
+        `;
+    }).join('');
 }
 
 // ==========================================
@@ -258,6 +281,17 @@ async function loadTrendingMovies() {
 document.addEventListener('DOMContentLoaded', () => {
     renderHistory();
     loadTrendingMovies();
+
+    // Michael, this links the Search Overlay button and the Enter key to the search function
+    const searchBtn = document.getElementById('searchBtn');
+    const searchInput = document.getElementById('searchInput');
+
+    if (searchBtn) searchBtn.addEventListener('click', searchMovies);
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchMovies();
+        });
+    }
 
     const themeBtn = document.getElementById('themeToggle');
     if (themeBtn) {

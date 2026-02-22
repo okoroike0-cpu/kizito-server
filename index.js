@@ -26,7 +26,6 @@ app.get('/api/info', (req, res) => {
 
     let target = userInput.startsWith('http') ? `"${userInput}"` : `gvsearch1:"${userInput}"`;
     
-    // Michael, I added '--impersonate chrome' and '--client-certificate' flags to bypass 403 errors
     let cmd = `${YTDLP_PATH} --dump-json --no-playlist --no-check-certificates --geo-bypass ` +
               `--impersonate chrome ` +
               `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" ` +
@@ -39,7 +38,6 @@ app.get('/api/info', (req, res) => {
     exec(cmd, (error, stdout, stderr) => {
         if (error || !stdout) {
             console.error("Scavenger Error Log:", stderr);
-            // Help Michael identify if it's a block or a real failure
             const isBlocked = stderr.includes("403") || stderr.includes("Forbidden");
             return res.status(500).json({ 
                 error: isBlocked ? "Site access forbidden (403). Try a different link." : "Pathfinder failed." 
@@ -62,14 +60,10 @@ app.get('/api/info', (req, res) => {
     });
 });
 
-// --- THE SECURE TMDB PROXY ---
+// --- THE SECURE TMDB PROXY (TRENDING) ---
 app.get('/api/trending', async (req, res) => {
     const TMDB_TOKEN = process.env.TMDB_TOKEN;
-
-    if (!TMDB_TOKEN) {
-        console.error("❌ TMDB_TOKEN missing from Render Env Variables");
-        return res.status(500).json({ error: "Server config error" });
-    }
+    if (!TMDB_TOKEN) return res.status(500).json({ error: "Server config error" });
 
     try {
         const response = await fetch('https://api.themoviedb.org/3/trending/movie/day?language=en-US', {
@@ -79,12 +73,35 @@ app.get('/api/trending', async (req, res) => {
                 Authorization: `Bearer ${TMDB_TOKEN}`
             }
         });
-
         const data = await response.json();
         res.json(data);
     } catch (err) {
-        console.error("Trending Proxy Error:", err);
         res.status(500).json({ error: "Failed to fetch movies" });
+    }
+});
+
+// --- THE SECURE TMDB PROXY (SEARCH) ---
+// Michael, this is the new part that powers your search bar!
+app.get('/api/search', async (req, res) => {
+    const query = req.query.q;
+    const TMDB_TOKEN = process.env.TMDB_TOKEN;
+
+    if (!query) return res.status(400).json({ error: "Search query required" });
+    if (!TMDB_TOKEN) return res.status(500).json({ error: "Server config error" });
+
+    try {
+        const response = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(query)}&language=en-US&page=1`, {
+            method: 'GET',
+            headers: {
+                accept: 'application/json',
+                Authorization: `Bearer ${TMDB_TOKEN}`
+            }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        console.error("Search Proxy Error:", err);
+        res.status(500).json({ error: "Search failed" });
     }
 });
 

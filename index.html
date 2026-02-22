@@ -79,7 +79,6 @@
         }
         #startBtn:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
-        /* --- UPDATED DOWNLOAD BUTTON RADIUS --- */
         #downloadBtn {
             width: 100%; 
             background: #28a745;
@@ -88,9 +87,40 @@
             color: white;
             font-weight: bold;
             cursor: pointer;
-            border-radius: 8px; /* Matches the share button radius */
+            border-radius: 8px;
             transition: transform 0.2s ease;
             animation: pulse-green 2s infinite;
+        }
+
+        #downloadBtn:disabled {
+            background: #6c757d;
+            animation: none;
+            cursor: not-allowed;
+        }
+
+        #trendingSection { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
+        #trendingGrid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 12px;
+        }
+        .movie-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+        }
+        .movie-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; }
+        .movie-info {
+            padding: 6px; font-size: 11px; font-weight: bold; text-align: center;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
         .share-btn {
@@ -164,6 +194,11 @@
             opacity: 0.7; transition: all 0.2s; cursor: pointer; border-radius: 5px;
         }
         .clear-btn:hover { opacity: 1; background: rgba(231, 76, 60, 0.1); border-color: var(--status-offline); }
+        
+        #sourceIndicator {
+            display: none; font-size: 10px; background: var(--accent); color: white;
+            padding: 2px 6px; border-radius: 4px; margin-top: 5px; font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -198,7 +233,10 @@
             <div class="result" id="result" style="display:none;">
                 <div id="videoPreview"></div>
                 <div class="meta">
-                    <strong id="title">Media Title</strong>
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <strong id="title">Media Title</strong>
+                        <span id="sourceIndicator"></span>
+                    </div>
                     <select id="formatSelect" style="width: 100%; margin: 15px 0; padding: 12px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);">
                         <option value="1080">MP4 Video (HD)</option>
                         <option value="720">MP4 Video (720p)</option>
@@ -213,6 +251,11 @@
 
             <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
             <a href="mailto:okoroike0@gmail.com?subject=OmniFetch Bug Report" class="feedback-link">Report Bug / Feedback</a>
+        </div>
+
+        <div id="trendingSection">
+            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">🔥 Trending Today</h3>
+            <div id="trendingGrid"></div>
         </div>
 
         <div class="guide-section">
@@ -234,142 +277,6 @@
         </div>
     </div>
 
-    <script>
-        const socket = io("https://kizito-server.onrender.com"); 
-
-        const statusDot = document.getElementById('statusDot');
-        const historySection = document.getElementById('historySection');
-        const historyList = document.getElementById('historyList');
-
-        window.onload = () => { renderHistory(); };
-
-        socket.on('connect', () => { statusDot.style.backgroundColor = 'var(--status-online)'; });
-        socket.on('disconnect', () => { statusDot.style.backgroundColor = 'var(--status-offline)'; });
-
-        socket.on('progress', (data) => {
-            const progressBar = document.getElementById('progressBar');
-            const progressWrapper = document.getElementById('progressWrapper');
-            const progressText = document.getElementById('progressText');
-            progressWrapper.style.display = 'block';
-            progressText.style.display = 'block';
-            progressBar.style.width = data.percent + '%';
-            progressText.innerText = `Processing: ${data.percent}%`;
-        });
-
-        async function fetchVideo() {
-            const urlInput = document.getElementById('videoUrl').value.trim();
-            const btnText = document.getElementById('btnText');
-            const spinner = document.getElementById('spinner');
-            const errorBox = document.getElementById('errorBox');
-            const resultArea = document.getElementById('result');
-
-            if (!urlInput) return showError("Please enter a link or name.");
-
-            errorBox.style.display = 'none';
-            btnText.innerText = "Searching...";
-            spinner.style.display = "inline-block";
-
-            try {
-                const response = await fetch(`/api/info?url=${encodeURIComponent(urlInput)}`);
-                const data = await response.json();
-
-                if (data.success) {
-                    document.getElementById('title').innerText = data.title;
-                    document.getElementById('videoPreview').innerHTML = `<img src="${data.thumbnail}" style="width:100%; height:100%; object-fit:cover;">`;
-                    resultArea.style.display = 'block';
-                    window.currentDownloadUrl = data.url; 
-                    addToHistory(data.title, urlInput);
-                } else {
-                    showError(data.error);
-                }
-            } catch (err) {
-                showError("Server Connection Failed.");
-            } finally {
-                spinner.style.display = "none";
-                btnText.innerText = "Fetch";
-            }
-        }
-
-        function shareSite() {
-            if (navigator.share) {
-                navigator.share({
-                    title: 'OmniFetch',
-                    text: 'Check out this universal media pathfinder!',
-                    url: window.location.href
-                });
-            } else {
-                navigator.clipboard.writeText(window.location.href);
-                alert("Link copied to clipboard!");
-            }
-        }
-
-        function copyLink(e, url) {
-            e.stopPropagation(); 
-            navigator.clipboard.writeText(url);
-            const btn = e.target;
-            const originalText = btn.innerText;
-            btn.innerText = "Copied!";
-            setTimeout(() => { btn.innerText = originalText; }, 2000);
-        }
-
-        function addToHistory(title, query) {
-            let history = JSON.parse(localStorage.getItem('omniHistory') || '[]');
-            history = history.filter(item => item.query !== query);
-            history.unshift({ title, query, date: new Date().toLocaleTimeString() });
-            if (history.length > 5) history.pop();
-            localStorage.setItem('omniHistory', JSON.stringify(history));
-            renderHistory();
-        }
-
-        function renderHistory() {
-            const history = JSON.parse(localStorage.getItem('omniHistory') || '[]');
-            if (history.length === 0) {
-                historySection.style.display = 'none';
-                return;
-            }
-            historySection.style.display = 'block';
-            historyList.innerHTML = history.map(item => `
-                <div class="history-item" onclick="reFetch('${item.query}')">
-                    <div style="max-width: 70%;">
-                        <strong style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.title}</strong>
-                        <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">${item.date}</div>
-                    </div>
-                    <div class="copy-badge" onclick="copyLink(event, '${item.query}')">Copy Link</div>
-                </div>
-            `).join('');
-        }
-
-        function clearHistory() {
-            if(confirm("Clear your fetch history?")) {
-                localStorage.removeItem('omniHistory');
-                renderHistory();
-            }
-        }
-
-        function reFetch(query) {
-            document.getElementById('videoUrl').value = query;
-            fetchVideo();
-        }
-
-        function triggerDownload() {
-            const format = document.getElementById('formatSelect').value;
-            const url = window.currentDownloadUrl;
-            if(!url) return;
-            window.location.href = `/download?url=${encodeURIComponent(url)}&format=${format}&socketId=${socket.id}`;
-        }
-
-        function showError(msg) {
-            const errorBox = document.getElementById('errorBox');
-            errorBox.innerText = msg;
-            errorBox.style.display = 'block';
-        }
-
-        const themeBtn = document.getElementById("themeToggle");
-        themeBtn.onclick = () => {
-            const target = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
-            document.documentElement.setAttribute("data-theme", target);
-            themeBtn.innerText = target === "light" ? "🌙 Mode" : "☀️ Mode";
-        };
-    </script>
+    <script src="kizito2.js"></script> 
 </body>
 </html>

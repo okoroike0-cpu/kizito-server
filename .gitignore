@@ -1,5 +1,17 @@
+# Michael's OmniFetch Ignore List
+
+# Dependencies (Never push this!)
 node_modules/
+
+# Scavenger Tools & Secrets
 yt-dlp
 cookies.txt
-.DS_Store
 *.log
+
+# System Files
+.DS_Store
+Thumbs.db
+.env
+
+# Build/Temp files
+package-lock.json

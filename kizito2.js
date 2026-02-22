@@ -39,17 +39,14 @@ socket.on('progress', (data) => {
         const p = Math.round(data.percent);
         bar.style.width = p + "%";
         
-        // UPDATED: Show "Finished" when 100%
         if (p < 100) {
             text.innerText = `Fetching: ${p}%`;
         } else {
             text.innerText = "✅ Download Finished!";
             showToast("🚀 Your file is ready! Check your downloads.");
             
-            // Trigger vibration for mobile users if supported
             if (navigator.vibrate) navigator.vibrate(200);
 
-            // Hide the progress bar after 4 seconds
             setTimeout(() => { 
                 wrapper.style.display = "none"; 
                 text.style.display = "none";
@@ -91,7 +88,7 @@ function showToast(message) {
         toast.style.transition = "opacity 0.5s ease";
         toast.style.opacity = "0";
         setTimeout(() => { toast.style.display = "none"; }, 500);
-    }, 4000); // Kept on screen slightly longer for readability
+    }, 4000);
 }
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -125,7 +122,7 @@ async function fetchVideo() {
         try {
             if(btnText) btnText.innerText = attempts > 0 ? `Retrying...` : "Searching...";
             
-            const response = await fetch(`${BACKEND_URL}/info?url=${encodeURIComponent(finalInput)}`, {
+            const response = await fetch(`${BACKEND_URL}/api/info?url=${encodeURIComponent(finalInput)}`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
@@ -135,11 +132,7 @@ async function fetchVideo() {
             if (response.ok) {
                 document.getElementById('title').innerText = data.title;
                 
-                const sourceBadge = document.getElementById('sourceIndicator');
-                if (sourceBadge && data.source) {
-                    sourceBadge.innerText = data.source.toUpperCase();
-                    sourceBadge.style.display = "inline-block";
-                }
+                window.currentDownloadUrl = data.url || finalInput;
 
                 if (window.csPlayer && data.videoId) {
                     if (!window.myPlayer) {
@@ -154,7 +147,7 @@ async function fetchVideo() {
                 }
 
                 document.getElementById('result').style.display = "block";
-                addToHistory(data.title, data.thumbnail, data.url || finalInput);
+                addToHistory(data.title, data.thumbnail, window.currentDownloadUrl);
 
                 if(btnText) btnText.innerText = "Fetch";
                 if(spinner) spinner.style.display = "none";
@@ -178,15 +171,26 @@ async function fetchVideo() {
 }
 
 function triggerDownload() {
-    const rawInput = document.getElementById('videoUrl').value;
-    const selection = document.getElementById('formatSelect').value;
-    const format = (selection === 'mp3') ? 'mp3' : 'mp4';
-    
-    if(!rawInput) return showError("No media loaded!");
-    
-    // Quality selection is passed here (240, 360, 480, 720, 1080)
-    const dlUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(rawInput)}&quality=${selection}&format=${format}&socketId=${userSocketId}`;
-    window.location.href = dlUrl; 
+    const dlBtn = document.getElementById('downloadBtn');
+    const url = window.currentDownloadUrl;
+
+    if (!url) {
+        return showError("No media loaded! Please fetch a video first.");
+    }
+
+    dlBtn.innerText = "🚀 Locating High-Speed Link...";
+    dlBtn.disabled = true;
+
+    const downloadGateway = `https://getvideo.pwn.sh/?url=${encodeURIComponent(url)}`;
+    window.open(downloadGateway, '_blank');
+
+    setTimeout(() => {
+        dlBtn.innerText = "Download Started";
+        dlBtn.disabled = false;
+        setTimeout(() => {
+            dlBtn.innerText = "Download Now";
+        }, 2000);
+    }, 3000);
 }
 
 // ==========================================
@@ -214,24 +218,73 @@ function renderHistory() {
 
     section.style.display = "block";
     list.innerHTML = history.map(item => `
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">
-            <img src="${item.thumbnail}" style="width: 60px; height: 35px; object-fit: cover; border-radius: 4px;">
-            <div style="flex: 1; min-width: 0;">
-                <div style="font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    ${item.title}
+        <div class="history-item" onclick="reFetch('${item.url}')">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+                <img src="${item.thumbnail}" style="width: 60px; height: 35px; object-fit: cover; border-radius: 4px;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${item.title}
+                    </div>
                 </div>
             </div>
-            <button onclick="reFetch('${item.url}')" style="padding: 4px 8px; font-size: 11px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                Get
-            </button>
+            <div class="copy-badge">RE-FETCH</div>
         </div>
     `).join('');
 }
 
-window.reFetch = (url) => {
-    document.getElementById('videoUrl').value = url;
-    fetchVideo();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+window.reFetch = (query) => {
+    const input = document.getElementById('videoUrl');
+    if (input) {
+        input.value = query;
+        fetchVideo(); 
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 };
 
-document.addEventListener('DOMContentLoaded', renderHistory);
+// ==========================================
+// 5. SECURE TRENDING GRID (Using Render Proxy)
+// ==========================================
+async function loadTrendingMovies() {
+    const grid = document.getElementById('trendingGrid');
+    if (!grid) return;
+
+    try {
+        // We call our OWN backend. The secret TMDB_TOKEN stays hidden on Render.
+        const response = await fetch(`${BACKEND_URL}/api/trending`);
+        const data = await response.json();
+        
+        if (!data.results) return;
+
+        grid.innerHTML = data.results.slice(0, 10).map(movie => `
+            <div class="movie-card" onclick="reFetch('${movie.title.replace(/'/g, "\\'")}')">
+                <img class="movie-poster" 
+                     src="https://image.tmdb.org/t/p/w500${movie.poster_path}" 
+                     alt="${movie.title}"
+                     onerror="this.src='https://via.placeholder.com/500x750?text=No+Poster'">
+                <div class="movie-info">${movie.title}</div>
+            </div>
+        `).join('');
+
+    } catch (err) {
+        console.error("Michael, the Trending Grid failed. Check Render Environment Variables:", err);
+    }
+}
+
+// ==========================================
+// 6. INITIALIZATION & THEME
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    renderHistory();
+    loadTrendingMovies();
+
+    // Theme Toggle Logic
+    const themeBtn = document.getElementById('themeToggle');
+    if (themeBtn) {
+        themeBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            themeBtn.innerText = newTheme === 'light' ? '🌙 Mode' : '☀️ Mode';
+        });
+    }
+});

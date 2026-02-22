@@ -26,13 +26,10 @@ try {
 }
 
 // ─────────────────────────────────────────────
-// KEY FIX: No --impersonate flag at all.
-// --impersonate chrome requires curl-cffi which
-// fails on Render. We replace it with:
-//   • A realistic Chrome User-Agent string
-//   • Spoofed browser headers via --add-header
-//   • --extractor-retries for resilience
-// This works for YouTube, Vimeo, Dailymotion etc.
+// No --impersonate flag at all.
+// We use a realistic Chrome User-Agent + spoofed
+// browser headers instead. Works for YouTube,
+// Vimeo, Dailymotion, etc.
 // ─────────────────────────────────────────────
 const BROWSER_HEADERS = [
     '--user-agent',
@@ -48,6 +45,13 @@ const COMMON_FLAGS = [
     '--geo-bypass',
     '--extractor-retries', '3',
     '--socket-timeout', '20',
+    // ─── FIX: Prevent any extractor (e.g. Dailymotion) from internally
+    // attempting impersonation even when we haven't asked for it.
+    // --no-impersonate was added in yt-dlp 2024.x — update yt-dlp if missing.
+    '--no-impersonate',
+    // Dailymotion's extractor specifically triggers impersonation internally.
+    // This arg tells its extractor to skip that code path entirely.
+    '--extractor-args', 'dailymotion:impersonate=false',
 ];
 
 function withCookies(args) {
@@ -107,14 +111,17 @@ app.get('/api/info', (req, res) => {
             const notFound = stderr.includes('No video formats') || stderr.includes('Unable to extract') || stderr.includes('no suitable formats');
             const botCheck = stderr.includes('Sign in') || stderr.includes('bot') || stderr.includes('429') || stderr.includes('rate limit');
             const badUrl   = stderr.includes('is not a valid URL') || stderr.includes('Unsupported URL');
+            // Detect residual impersonation errors even after our flags, so we surface a clear message
+            const impersonateErr = stderr.includes('impersonat') || stderr.includes('curl-cffi');
 
             let msg = 'Search failed. Try adding "trailer" or "official video" to the name.';
-            if (blocked)  msg = 'Site blocked access (403). Paste a direct video URL instead.';
-            if (notFound) msg = 'No media found for that search. Try a different title.';
-            if (botCheck) msg = 'Platform is rate-limiting us. Wait 30 seconds and try again, or paste the URL directly.';
-            if (badUrl)   msg = 'Invalid URL. Check the link and try again.';
+            if (blocked)        msg = 'Site blocked access (403). Paste a direct video URL instead.';
+            if (notFound)       msg = 'No media found for that search. Try a different title.';
+            if (botCheck)       msg = 'Platform is rate-limiting us. Wait 30 seconds and try again, or paste the URL directly.';
+            if (badUrl)         msg = 'Invalid URL. Check the link and try again.';
+            if (impersonateErr) msg = 'This site requires browser emulation not available on this server. Try pasting a YouTube or direct video URL instead.';
 
-            console.error(`[info] Failed — code=${code} blocked=${blocked} notFound=${notFound} botCheck=${botCheck}`);
+            console.error(`[info] Failed — code=${code} blocked=${blocked} notFound=${notFound} botCheck=${botCheck} impersonateErr=${impersonateErr}`);
             return res.status(500).json({ error: msg });
         }
 

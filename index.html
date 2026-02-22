@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniFetch | Universal Media Pathfinder</title>
-    
+
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -36,11 +36,13 @@
             --step-bg: #252525;
         }
 
-        body { 
-            background-color: var(--bg-color); 
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0; padding: 0;
-            transition: 0.3s;
+            transition: background-color 0.3s, color 0.3s;
             font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
@@ -52,51 +54,82 @@
             transition: all 0.3s ease; cursor: pointer; text-decoration: none;
             user-select: none;
         }
-
         .header-box:hover {
-            background: var(--card-bg);
+            background: var(--step-bg);
             box-shadow: 0 8px 20px rgba(0, 123, 255, 0.2);
             transform: translateY(-2px);
         }
 
-        .card { 
-            background: var(--card-bg); padding: 30px; border-radius: 15px; 
+        .card {
+            background: var(--card-bg); padding: 30px; border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 500px;
             margin-bottom: 20px; position: relative;
         }
 
         .input-row { display: flex; gap: 10px; margin: 20px 0; }
-        input { 
-            flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); 
+        input[type="text"] {
+            flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);
             background: var(--input-bg); color: var(--text-color); font-size: 16px;
+            outline: none; transition: border-color 0.2s;
+            width: 100%;
         }
+        input[type="text"]:focus { border-color: var(--accent); }
 
-        #startBtn { 
-            cursor: pointer; border: none; padding: 12px 25px; border-radius: 8px; 
+        #startBtn {
+            cursor: pointer; border: none; padding: 12px 25px; border-radius: 8px;
             font-weight: bold; background: var(--accent); color: white;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s ease;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            transition: all 0.2s ease; white-space: nowrap; flex-shrink: 0;
         }
-        #startBtn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        #startBtn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
+        #startBtn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
         #downloadBtn {
-            width: 100%; 
+            width: 100%;
             background: #28a745;
-            padding: 12px 25px;
+            padding: 14px 25px;
             border: none;
             color: white;
+            font-size: 15px;
             font-weight: bold;
             cursor: pointer;
             border-radius: 8px;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, background 0.2s;
             animation: pulse-green 2s infinite;
         }
+        #downloadBtn:hover:not(:disabled) { background: #218838; transform: translateY(-1px); }
+        #downloadBtn:disabled { background: #6c757d; animation: none; cursor: not-allowed; }
 
-        #downloadBtn:disabled {
-            background: #6c757d;
-            animation: none;
-            cursor: not-allowed;
+        /* FIX: videoPreview needs a defined container; csPlayer injects into it */
+        #videoPreview {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+        #videoPreview img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Search bar row */
+        .search-row {
+            display: flex; gap: 8px; margin-bottom: 15px;
+        }
+        .search-row input {
+            flex: 1; padding: 10px 14px; border-radius: 8px;
+            border: 1px solid var(--border-color); background: var(--input-bg);
+            color: var(--text-color); font-size: 14px; outline: none;
+        }
+        .search-row input:focus { border-color: var(--accent); }
+        #searchBtn {
+            padding: 10px 18px; background: var(--accent); color: white;
+            border: none; border-radius: 8px; font-weight: bold; cursor: pointer;
+            font-size: 13px; white-space: nowrap; transition: background 0.2s;
+        }
+        #searchBtn:hover { background: var(--accent-hover); }
 
         #trendingSection { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
         #trendingGrid {
@@ -105,19 +138,16 @@
             gap: 12px;
         }
         .movie-card {
-            background: var(--card-bg);
-            border-radius: 10px;
-            overflow: hidden;
+            background: var(--card-bg); border-radius: 10px; overflow: hidden;
             transition: transform 0.3s ease, border-color 0.3s ease;
-            cursor: pointer;
-            border: 1px solid var(--border-color);
+            cursor: pointer; border: 1px solid var(--border-color);
         }
         .movie-card:hover {
             transform: translateY(-5px);
             border-color: var(--accent);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
         }
-        .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; }
+        .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
         .movie-info {
             padding: 6px; font-size: 11px; font-weight: bold; text-align: center;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -127,8 +157,7 @@
             background: none; border: 1px solid var(--border-color);
             color: var(--text-color); padding: 10px; font-size: 12px;
             margin-top: 15px; width: 100%; opacity: 0.8;
-            transition: all 0.2s; border-radius: 8px; cursor: pointer;
-            font-weight: bold;
+            transition: all 0.2s; border-radius: 8px; cursor: pointer; font-weight: bold;
         }
         .share-btn:hover { opacity: 1; background: var(--step-bg); border-color: var(--accent); }
 
@@ -139,43 +168,41 @@
         .feedback-link:hover { opacity: 1; color: var(--accent); }
 
         @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 var(--success-glow); }
-            70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
+            0%   { box-shadow: 0 0 0 0 var(--success-glow); }
+            70%  { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
             100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
         }
 
         .guide-section { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
         .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .step-card { 
-            background: var(--step-bg); padding: 15px; border-radius: 10px; 
+        .step-card {
+            background: var(--step-bg); padding: 15px; border-radius: 10px;
             font-size: 13px; border-left: 4px solid var(--accent); line-height: 1.4;
         }
 
-        @media (max-width: 600px) {
-            .container { padding: 20px 10px; }
-            .card { padding: 20px; border-radius: 10px; }
-            h1 { font-size: 24px; }
-            .input-row { flex-direction: column; }
-            #startBtn, #downloadBtn, input, select { width: 100% !important; box-sizing: border-box; }
-            .guide-grid { grid-template-columns: 1fr; }
+        .status-dot {
+            height: 8px; width: 8px; border-radius: 50%; display: inline-block;
+            margin-right: 5px; background-color: #e74c3c; flex-shrink: 0;
         }
 
-        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; background-color: var(--status-offline); }
-        #videoPreview { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; margin-bottom: 15px; overflow: hidden; }
-        .spinner { border: 2px solid #ffffff4d; border-top: 2px solid #fff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; display: none; margin-left: 10px; }
+        .spinner {
+            border: 2px solid #ffffff4d; border-top: 2px solid #fff;
+            border-radius: 50%; width: 16px; height: 16px;
+            animation: spin 1s linear infinite; display: none;
+        }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
         #historySection { width: 100%; max-width: 500px; margin-top: 10px; display: none; }
         .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        
-        .history-item { 
-            background: var(--card-bg); padding: 15px; border-radius: 12px; 
+
+        .history-item {
+            background: var(--card-bg); padding: 15px; border-radius: 12px;
             margin-bottom: 10px; cursor: pointer; border: 1px solid var(--border-color);
-            transition: all 0.2s ease; position: relative;
+            transition: all 0.2s ease;
             display: flex; justify-content: space-between; align-items: center;
         }
-        .history-item:hover { 
-            border-color: var(--accent); 
+        .history-item:hover {
+            border-color: var(--accent);
             transform: translateY(-3px);
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
@@ -184,99 +211,138 @@
             background: var(--step-bg); color: var(--accent);
             padding: 4px 8px; border-radius: 6px; font-size: 10px;
             font-weight: bold; border: 1px solid var(--border-color);
-            transition: 0.2s;
+            transition: 0.2s; flex-shrink: 0;
         }
         .copy-badge:hover { background: var(--accent); color: white; }
 
-        .clear-btn { 
-            background: none; border: 1px solid transparent; 
-            color: var(--status-offline); font-size: 11px; padding: 5px 10px; 
+        .clear-btn {
+            background: none; border: 1px solid transparent;
+            color: var(--status-offline); font-size: 11px; padding: 5px 10px;
             opacity: 0.7; transition: all 0.2s; cursor: pointer; border-radius: 5px;
         }
         .clear-btn:hover { opacity: 1; background: rgba(231, 76, 60, 0.1); border-color: var(--status-offline); }
-        
+
         #sourceIndicator {
             display: none; font-size: 10px; background: var(--accent); color: white;
-            padding: 2px 6px; border-radius: 4px; margin-top: 5px; font-weight: bold;
+            padding: 2px 8px; border-radius: 4px; font-weight: bold; flex-shrink: 0;
+        }
+
+        select {
+            width: 100%; margin: 15px 0; padding: 12px;
+            border-radius: 8px; background: var(--input-bg);
+            color: var(--text-color); border: 1px solid var(--border-color);
+            font-size: 14px; outline: none; cursor: pointer;
+        }
+        select:focus { border-color: var(--accent); }
+
+        @media (max-width: 600px) {
+            .container { padding: 20px 10px; }
+            .card { padding: 20px; border-radius: 10px; }
+            h1 { font-size: 24px; }
+            .input-row { flex-direction: column; }
+            .guide-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
-    <div class="theme-switch" style="position: absolute; top: 15px; right: 15px; z-index: 100;">
-        <button id="themeToggle" style="padding: 8px 15px; font-size: 12px; background: var(--card-bg); color: var(--text-color); border: 1px solid var(--border-color); cursor:pointer; border-radius:8px;">🌙 Mode</button>
+    <div style="position: absolute; top: 15px; right: 15px; z-index: 100;">
+        <button id="themeToggle" style="padding: 8px 15px; font-size: 12px; background: var(--card-bg); color: var(--text-color); border: 1px solid var(--border-color); cursor:pointer; border-radius:8px; font-weight:bold;">🌙 Mode</button>
     </div>
 
     <div class="container">
         <div class="card">
+            <!-- Header -->
             <a href="/" class="header-box">
-                <div id="statusDot" class="status-dot"></div>
-                <h1 style="margin: 0; color: var(--accent);">OmniFetch</h1>
+                <div id="statusDot" class="status-dot" title="Connecting..."></div>
+                <h1 style="margin: 0; color: var(--accent); font-size: 28px;">OmniFetch</h1>
             </a>
-            <p style="text-align: center; font-size: 13px; opacity: 0.8; margin-top: 5px;">Universal Media Pathfinder</p>
-            
+            <p style="text-align: center; font-size: 13px; opacity: 0.7; margin-top: 5px; margin-bottom: 0;">Universal Media Pathfinder</p>
+
+            <!-- Main input -->
             <div class="input-row">
-                <input type="text" id="videoUrl" placeholder="Paste link or type video name..." />
+                <input type="text" id="videoUrl" placeholder="Paste link or type video name..." autocomplete="off" />
                 <button onclick="fetchVideo()" id="startBtn">
                     <span id="btnText">Fetch</span>
                     <div id="spinner" class="spinner"></div>
                 </button>
             </div>
 
-            <div id="progressText" style="display:none; font-size: 12px; margin-bottom: 5px; text-align: center;">Fetching...</div>
+            <!-- Progress -->
+            <div id="progressText" style="display:none; font-size: 12px; margin-bottom: 5px; text-align: center;"></div>
             <div id="progressWrapper" style="display:none; background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 15px;">
                 <div id="progressBar" style="width: 0%; height: 100%; background: #2ecc71; transition: width 0.3s ease;"></div>
             </div>
 
-            <div id="errorBox" style="display:none; color: #e74c3c; background: rgba(231, 76, 60, 0.1); padding: 10px; border-radius: 5px; font-size: 13px; margin-bottom: 15px; text-align: center; border: 1px solid #e74c3c;"></div>
+            <!-- Error box -->
+            <div id="errorBox" style="display:none; color: #e74c3c; background: rgba(231,76,60,0.1); padding: 10px; border-radius: 5px; font-size: 13px; margin-bottom: 15px; text-align: center; border: 1px solid #e74c3c;"></div>
 
-            <div class="result" id="result" style="display:none;">
+            <!-- Result section -->
+            <div id="result" style="display:none;">
+                <!--
+                    FIX: csPlayer needs a real container to inject into.
+                    We give it a div with an id. If csPlayer isn't available,
+                    kizito2.js will inject a thumbnail <img> here instead.
+                -->
                 <div id="videoPreview"></div>
+
                 <div class="meta">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <strong id="title">Media Title</strong>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <strong id="title" style="font-size: 14px; line-height: 1.4; flex: 1;">Media Title</strong>
                         <span id="sourceIndicator"></span>
                     </div>
-                    <select id="formatSelect" style="width: 100%; margin: 15px 0; padding: 12px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);">
-                        <option value="1080">MP4 Video (HD)</option>
-                        <option value="720">MP4 Video (720p)</option>
-                        <option value="480" selected>Medium (480p)</option>
-                        <option value="360">Low (360p)</option>
-                        <option value="240">Save Data (240p)</option>
-                        <option value="mp3">MP3 Audio (High Quality)</option>
+
+                    <select id="formatSelect">
+                        <option value="1080">📹 MP4 Video — HD 1080p</option>
+                        <option value="720">📹 MP4 Video — 720p</option>
+                        <option value="480" selected>📹 MP4 Video — 480p (Recommended)</option>
+                        <option value="360">📹 MP4 Video — 360p (Light)</option>
+                        <option value="240">📹 MP4 Video — 240p (Save Data)</option>
+                        <option value="mp3">🎵 MP3 Audio — High Quality</option>
                     </select>
-                    <button id="downloadBtn" onclick="triggerDownload()">Download Now</button>
+
+                    <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
                 </div>
             </div>
 
             <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
-            <a href="mailto:okoroike0@gmail.com?subject=OmniFetch Bug Report" class="feedback-link">Report Bug / Feedback</a>
+            <a href="mailto:okoroike0@gmail.com?subject=OmniFetch Bug Report" class="feedback-link">✉ Report Bug / Feedback</a>
         </div>
 
+        <!-- Trending / Search section -->
         <div id="trendingSection">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">🔥 Trending Today</h3>
+            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">🔥 Trending Today</h3>
+
+            <!-- FIX: Search bar was wired in JS but the HTML elements were missing from the trending section -->
+            <div class="search-row">
+                <input type="text" id="searchInput" placeholder="Search movies...">
+                <button id="searchBtn">Search</button>
+            </div>
+
             <div id="trendingGrid"></div>
         </div>
 
+        <!-- How it works -->
         <div class="guide-section">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase;">How it works</h3>
+            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">⚙ How it Works</h3>
             <div class="guide-grid">
                 <div class="step-card"><strong>1. Dispatch</strong><br>Enter a link or name. Our scavenger bots start the hunt.</div>
                 <div class="step-card"><strong>2. Scavenge</strong><br>We bypass trackers to find the cleanest high-speed stream.</div>
                 <div class="step-card"><strong>3. Convert</strong><br>Files are processed into your chosen format instantly.</div>
-                <div class="step-card"><strong>4. Claim</strong><br>Download your media directly to your device. No ads.</div>
+                <div class="step-card"><strong>4. Claim</strong><br>Download directly to your device. No ads, no redirects.</div>
             </div>
         </div>
 
+        <!-- History -->
         <div id="historySection">
             <div class="history-header">
-                <h3 style="font-size: 14px; opacity: 0.7; margin: 0; text-transform: uppercase;">Recent Fetches</h3>
+                <h3 style="font-size: 14px; opacity: 0.7; margin: 0; text-transform: uppercase; letter-spacing: 1px;">🕘 Recent Fetches</h3>
                 <button onclick="clearHistory()" class="clear-btn">Clear All</button>
             </div>
             <div id="historyList"></div>
         </div>
     </div>
 
-    <script src="kizito2.js"></script> 
+    <script src="kizito2.js"></script>
 </body>
 </html>

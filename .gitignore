@@ -1,17 +1,13 @@
-# Michael's OmniFetch Ignore List
-
-# Dependencies (Never push this!)
+# Dependency folders
 node_modules/
 
-# Scavenger Tools & Secrets
-yt-dlp
+# Environment and Secrets
+.env
 cookies.txt
-*.log
 
-# System Files
+# OS metadata
 .DS_Store
 Thumbs.db
-.env
 
-# Build/Temp files
-package-lock.json
+# Logs
+*.log

@@ -43,8 +43,6 @@ socket.on('progress', (data) => {
             text.innerText = `Fetching: ${p}%`;
         } else {
             text.innerText = "✅ Download Finished!";
-            showToast("🚀 Your file is ready! Check your downloads.");
-            
             if (navigator.vibrate) navigator.vibrate(200);
 
             setTimeout(() => { 
@@ -62,8 +60,13 @@ socket.on('progress', (data) => {
 
 function formatInput(input) {
     const trimmed = input.trim();
+    // If it's a 11 char ID, assume YouTube
     if (trimmed.length === 11 && !trimmed.includes('.') && !trimmed.includes('/')) {
         return `https://www.youtube.com/watch?v=${trimmed}`;
+    }
+    // If it's not a URL (doesn't start with http), wrap it in a search command
+    if (!trimmed.startsWith('http')) {
+        return `gvsearch1:${trimmed} movie`;
     }
     return trimmed; 
 }
@@ -76,21 +79,6 @@ function showError(message) {
     errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function showToast(message) {
-    const toast = document.getElementById('toast');
-    if (!toast) return console.log(message); 
-    
-    toast.innerText = message;
-    toast.style.display = "block";
-    toast.style.opacity = "1";
-
-    setTimeout(() => {
-        toast.style.transition = "opacity 0.5s ease";
-        toast.style.opacity = "0";
-        setTimeout(() => { toast.style.display = "none"; }, 500);
-    }, 4000);
-}
-
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // ==========================================
@@ -99,16 +87,18 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 
 async function fetchVideo() {
     const rawInput = document.getElementById('videoUrl').value;
-    const finalInput = formatInput(rawInput); 
-    const startBtn = document.getElementById('startBtn');
-    const btnText = document.getElementById('btnText');
-    const spinner = document.getElementById('spinner');
-    
     if (!rawInput) {
         showError("Please enter a link or a name!");
         return;
     }
 
+    // Apply the gvsearch1 logic if it's just a name
+    const finalInput = formatInput(rawInput); 
+    
+    const startBtn = document.getElementById('startBtn');
+    const btnText = document.getElementById('btnText');
+    const spinner = document.getElementById('spinner');
+    
     const errorBox = document.getElementById('errorBox');
     if (errorBox) errorBox.style.display = "none";
     
@@ -131,9 +121,9 @@ async function fetchVideo() {
 
             if (response.ok) {
                 document.getElementById('title').innerText = data.title;
-                
                 window.currentDownloadUrl = data.url || finalInput;
 
+                // Load preview if possible
                 if (window.csPlayer && data.videoId) {
                     if (!window.myPlayer) {
                         window.myPlayer = new csPlayer("#videoPreview", {
@@ -159,7 +149,7 @@ async function fetchVideo() {
         } catch (error) {
             attempts++;
             if (attempts > maxRetries) {
-                showError(`Pathfinder Error: ${error.message}`);
+                showError(`Pathfinder Error: ${error.message}. Try adding 'trailer' to the name.`);
             } else {
                 await delay(2000);
             }
@@ -174,23 +164,19 @@ function triggerDownload() {
     const dlBtn = document.getElementById('downloadBtn');
     const url = window.currentDownloadUrl;
 
-    if (!url) {
-        return showError("No media loaded! Please fetch a video first.");
-    }
+    if (!url) return showError("No media loaded!");
 
     dlBtn.innerText = "🚀 Locating High-Speed Link...";
     dlBtn.disabled = true;
 
+    // Use the downloader gateway
     const downloadGateway = `https://getvideo.pwn.sh/?url=${encodeURIComponent(url)}`;
     window.open(downloadGateway, '_blank');
 
     setTimeout(() => {
-        dlBtn.innerText = "Download Started";
+        dlBtn.innerText = "Download Now";
         dlBtn.disabled = false;
-        setTimeout(() => {
-            dlBtn.innerText = "Download Now";
-        }, 2000);
-    }, 3000);
+    }, 4000);
 }
 
 // ==========================================
@@ -199,7 +185,7 @@ function triggerDownload() {
 function addToHistory(title, thumbnail, url) {
     let history = JSON.parse(localStorage.getItem('omni_history') || "[]");
     history = history.filter(item => item.url !== url);
-    history.unshift({ title, thumbnail, url, date: new Date().toLocaleTimeString() });
+    history.unshift({ title, thumbnail, url });
     history = history.slice(0, 3); 
     localStorage.setItem('omni_history', JSON.stringify(history));
     renderHistory();
@@ -211,20 +197,15 @@ function renderHistory() {
     const list = document.getElementById('historyList');
 
     if (!section || !list) return;
-    if (history.length === 0) {
-        section.style.display = "none";
-        return;
-    }
+    if (history.length === 0) return section.style.display = "none";
 
     section.style.display = "block";
     list.innerHTML = history.map(item => `
         <div class="history-item" onclick="reFetch('${item.url}')">
             <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
                 <img src="${item.thumbnail}" style="width: 60px; height: 35px; object-fit: cover; border-radius: 4px;">
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        ${item.title}
-                    </div>
+                <div style="font-weight: bold; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${item.title}
                 </div>
             </div>
             <div class="copy-badge">RE-FETCH</div>
@@ -242,42 +223,42 @@ window.reFetch = (query) => {
 };
 
 // ==========================================
-// 5. SECURE TRENDING GRID (Using Render Proxy)
+// 5. SECURE TRENDING GRID
 // ==========================================
 async function loadTrendingMovies() {
     const grid = document.getElementById('trendingGrid');
     if (!grid) return;
 
     try {
-        // We call our OWN backend. The secret TMDB_TOKEN stays hidden on Render.
         const response = await fetch(`${BACKEND_URL}/api/trending`);
         const data = await response.json();
         
         if (!data.results) return;
 
-        grid.innerHTML = data.results.slice(0, 10).map(movie => `
-            <div class="movie-card" onclick="reFetch('${movie.title.replace(/'/g, "\\'")}')">
-                <img class="movie-poster" 
-                     src="https://image.tmdb.org/t/p/w500${movie.poster_path}" 
-                     alt="${movie.title}"
-                     onerror="this.src='https://via.placeholder.com/500x750?text=No+Poster'">
-                <div class="movie-info">${movie.title}</div>
-            </div>
-        `).join('');
+        grid.innerHTML = data.results.slice(0, 10).map(movie => {
+            const safeTitle = movie.title.replace(/'/g, "\\'");
+            return `
+                <div class="movie-card" onclick="reFetch('${safeTitle}')">
+                    <img class="movie-poster" 
+                         src="https://image.tmdb.org/t/p/w500${movie.poster_path}" 
+                         onerror="this.src='https://via.placeholder.com/500x750?text=No+Poster'">
+                    <div class="movie-info">${movie.title}</div>
+                </div>
+            `;
+        }).join('');
 
     } catch (err) {
-        console.error("Michael, the Trending Grid failed. Check Render Environment Variables:", err);
+        console.error("Trending Error:", err);
     }
 }
 
 // ==========================================
-// 6. INITIALIZATION & THEME
+// 6. INITIALIZATION
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     renderHistory();
     loadTrendingMovies();
 
-    // Theme Toggle Logic
     const themeBtn = document.getElementById('themeToggle');
     if (themeBtn) {
         themeBtn.addEventListener('click', () => {

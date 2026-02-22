@@ -19,7 +19,6 @@ setInterval(() => {
 socket.on('connect', () => {
     userSocketId = socket.id;
     console.log("OmniFetch Connected. ID:", userSocketId);
-    // Update dot immediately on connect
     const statusDot = document.getElementById('statusDot');
     if (statusDot) statusDot.style.backgroundColor = "#2ecc71";
 });
@@ -31,26 +30,26 @@ socket.on('disconnect', () => {
 
 // Listener for download progress
 socket.on('progress', (data) => {
-    const bar = document.getElementById('progressBar');
-    const text = document.getElementById('progressText');
+    const bar     = document.getElementById('progressBar');
+    const text    = document.getElementById('progressText');
     const wrapper = document.getElementById('progressWrapper');
 
     if (data.percent !== undefined && bar && text && wrapper) {
         wrapper.style.display = "block";
-        text.style.display = "block";
+        text.style.display    = "block";
 
         const p = Math.round(data.percent);
         bar.style.width = p + "%";
 
         if (p < 100) {
-            text.innerText = `Fetching: ${p}%`;
+            text.innerText = `Downloading: ${p}%`;
         } else {
-            text.innerText = "✅ Download Finished!";
+            text.innerText = "✅ Download Complete!";
             if (navigator.vibrate) navigator.vibrate(200);
             setTimeout(() => {
                 wrapper.style.display = "none";
-                text.style.display = "none";
-                bar.style.width = "0%";
+                text.style.display    = "none";
+                bar.style.width       = "0%";
             }, 4000);
         }
     }
@@ -62,16 +61,20 @@ socket.on('progress', (data) => {
 
 function formatInput(input) {
     const trimmed = input.trim();
-    // Plain 11-char YouTube video ID
+
+    // Plain 11-char YouTube video ID (no dots or slashes)
     if (trimmed.length === 11 && !trimmed.includes('.') && !trimmed.includes('/')) {
         return `https://www.youtube.com/watch?v=${trimmed}`;
     }
-    // Already a URL
+
+    // Already a full URL — pass through unchanged
     if (trimmed.startsWith('http')) {
         return trimmed;
     }
-    // Treat as search query
-    return `gvsearch1:${trimmed} movie`;
+
+    // FIX 2: Do NOT append 'movie' — let the user's own words be the query.
+    // Previously: `gvsearch1:${trimmed} movie` caused searches like "Breaking Bad movie"
+    return `gvsearch1:${trimmed}`;
 }
 
 function showError(message) {
@@ -103,16 +106,15 @@ async function fetchVideo() {
     const finalInput = formatInput(rawInput);
 
     const startBtn = document.getElementById('startBtn');
-    const btnText = document.getElementById('btnText');
-    const spinner = document.getElementById('spinner');
+    const btnText  = document.getElementById('btnText');
+    const spinner  = document.getElementById('spinner');
 
     hideError();
-
     startBtn.disabled = true;
     if (spinner) spinner.style.display = "inline-block";
     if (btnText) btnText.innerText = "Searching...";
 
-    // Hide previous result
+    // Hide previous result while searching
     document.getElementById('result').style.display = "none";
 
     let attempts = 0;
@@ -122,10 +124,10 @@ async function fetchVideo() {
         try {
             if (attempts > 0 && btnText) btnText.innerText = "Retrying...";
 
-            const response = await fetch(`${BACKEND_URL}/api/info?url=${encodeURIComponent(finalInput)}`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
+            const response = await fetch(
+                `${BACKEND_URL}/api/info?url=${encodeURIComponent(finalInput)}`,
+                { method: 'GET', headers: { 'Accept': 'application/json' } }
+            );
 
             const data = await response.json();
 
@@ -133,36 +135,38 @@ async function fetchVideo() {
                 document.getElementById('title').innerText = data.title || "Unknown Title";
                 window.currentDownloadUrl = data.url || finalInput;
 
-                // FIX: csPlayer is available as global `csPlayer`, not `window.csPlayer`
+                // FIX 3: Reset window.myPlayer to null before clearing the preview container.
+                // Previously: innerHTML = '' destroyed the DOM node csPlayer was bound to,
+                // but myPlayer still pointed at it — next .load() call hit a dead element.
                 const previewEl = document.getElementById('videoPreview');
-                if (typeof csPlayer !== 'undefined' && data.videoId && previewEl) {
-                    previewEl.innerHTML = ''; // Clear any previous player
-                    if (!window.myPlayer) {
-                        window.myPlayer = new csPlayer("#videoPreview", {
-                            id: data.videoId,
-                            theme: "default",
-                            autoplay: false
-                        });
-                    } else {
-                        window.myPlayer.load(data.videoId);
-                    }
-                } else if (previewEl && data.thumbnail) {
-                    // Fallback: show thumbnail if no player available
-                    previewEl.innerHTML = `<img src="${data.thumbnail}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" onerror="this.style.display='none'">`;
+                if (previewEl) {
+                    previewEl.innerHTML  = '';
+                    window.myPlayer      = null;   // ← FIX 3
                 }
 
-                // Show source badge
+                if (typeof csPlayer !== 'undefined' && data.videoId && previewEl) {
+                    window.myPlayer = new csPlayer("#videoPreview", {
+                        id:       data.videoId,
+                        theme:    "default",
+                        autoplay: false
+                    });
+                } else if (previewEl && data.thumbnail) {
+                    previewEl.innerHTML = `<img src="${data.thumbnail}"
+                        style="width:100%;height:100%;object-fit:cover;border-radius:8px;"
+                        onerror="this.style.display='none'">`;
+                }
+
+                // Show source platform badge
                 const sourceEl = document.getElementById('sourceIndicator');
-                if (sourceEl && data.source) {
-                    sourceEl.innerText = data.source;
-                    sourceEl.style.display = "inline-block";
+                if (sourceEl) {
+                    sourceEl.innerText     = data.source || '';
+                    sourceEl.style.display = data.source ? "inline-block" : "none";
                 }
 
                 document.getElementById('result').style.display = "block";
 
-                // FIX: pass thumbnail safely with fallback
                 addToHistory(
-                    data.title || "Unknown",
+                    data.title     || "Unknown",
                     data.thumbnail || '',
                     window.currentDownloadUrl
                 );
@@ -177,7 +181,7 @@ async function fetchVideo() {
         } catch (error) {
             attempts++;
             if (attempts > maxRetries) {
-                showError(`Pathfinder Error: ${error.message}. Try adding 'trailer' to the name.`);
+                showError(`Pathfinder Error: ${error.message}`);
             } else {
                 await delay(2000);
             }
@@ -189,52 +193,56 @@ async function fetchVideo() {
     startBtn.disabled = false;
 }
 
-// FIX: triggerDownload now reads format, sends socketId, uses your own /download endpoint
 function triggerDownload() {
     const dlBtn = document.getElementById('downloadBtn');
-    const url = window.currentDownloadUrl;
+    const url   = window.currentDownloadUrl;
 
     if (!url) return showError("No media loaded!");
 
-    // FIX: Read the selected format from the dropdown
     const formatSelect = document.getElementById('formatSelect');
-    const format = formatSelect ? formatSelect.value : '480';
+    const format       = formatSelect ? formatSelect.value : '480';
 
-    dlBtn.innerText = "🚀 Preparing Download...";
-    dlBtn.disabled = true;
+    // FIX 4: Warn if socket hasn't connected yet — progress bar won't work without a socketId.
+    // Previously: userSocketId was "" and server called io.to("").emit() → nobody received it.
+    if (!userSocketId) {
+        console.warn("Socket not connected yet — progress bar will not update for this download.");
+    }
 
-    // FIX: Use your own /download endpoint with socketId for progress tracking
-    const downloadUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(url)}&format=${encodeURIComponent(format)}&socketId=${encodeURIComponent(userSocketId)}`;
+    dlBtn.innerText  = "🚀 Preparing Download...";
+    dlBtn.disabled   = true;
 
-    // Trigger file download via hidden anchor (preserves Content-Disposition header)
+    const downloadUrl = `${BACKEND_URL}/download`
+        + `?url=${encodeURIComponent(url)}`
+        + `&format=${encodeURIComponent(format)}`
+        + `&socketId=${encodeURIComponent(userSocketId)}`;
+
+    // Hidden anchor download — preserves Content-Disposition filename from server
     const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = ''; // let server set the filename
+    anchor.href  = downloadUrl;
+    anchor.download = '';
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
 
     setTimeout(() => {
-        dlBtn.innerText = "Download Now";
-        dlBtn.disabled = false;
+        dlBtn.innerText = "⬇ Download Now";
+        dlBtn.disabled  = false;
     }, 5000);
 }
 
 // ==========================================
-// 4. THEME, HISTORY & MISSING FUNCTIONS
+// 4. THEME, HISTORY & UTILITY FUNCTIONS
 // ==========================================
 
-// FIX: shareSite was called but never defined
 function shareSite() {
     const shareData = {
         title: 'OmniFetch',
-        text: 'Download any video or audio instantly — Universal Media Pathfinder',
-        url: window.location.href
+        text:  'Download any video or audio instantly — Universal Media Pathfinder',
+        url:   window.location.href
     };
     if (navigator.share) {
         navigator.share(shareData).catch(() => {});
     } else {
-        // Fallback: copy URL to clipboard
         navigator.clipboard.writeText(window.location.href).then(() => {
             const btn = document.querySelector('.share-btn');
             if (btn) {
@@ -248,7 +256,6 @@ function shareSite() {
     }
 }
 
-// FIX: clearHistory was called but never defined
 function clearHistory() {
     localStorage.removeItem('omni_history');
     renderHistory();
@@ -266,7 +273,7 @@ function addToHistory(title, thumbnail, url) {
 function renderHistory() {
     const history = JSON.parse(localStorage.getItem('omni_history') || "[]");
     const section = document.getElementById('historySection');
-    const list = document.getElementById('historyList');
+    const list    = document.getElementById('historyList');
 
     if (!section || !list) return;
     if (history.length === 0) {
@@ -275,24 +282,36 @@ function renderHistory() {
     }
 
     section.style.display = "block";
-    list.innerHTML = history.map(item => `
-        <div class="history-item" onclick="reFetch('${item.url.replace(/'/g, "\\'")}')">
-            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+
+    // FIX 1 (partial): store url in a data attribute to avoid apostrophe-in-onclick breakage.
+    // Instead of onclick="reFetch('${url}')" which breaks on titles/URLs with apostrophes,
+    // we use data-url and attach the listener in renderHistory itself.
+    list.innerHTML = history.map((item, i) => `
+        <div class="history-item" data-index="${i}">
+            <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
                 ${item.thumbnail
-                    ? `<img src="${item.thumbnail}" style="width: 60px; height: 35px; object-fit: cover; border-radius: 4px;" onerror="this.style.display='none'">`
-                    : `<div style="width:60px;height:35px;background:var(--step-bg);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;">🎬</div>`
+                    ? `<img src="${item.thumbnail}"
+                            style="width:60px;height:35px;object-fit:cover;border-radius:4px;"
+                            onerror="this.style.display='none'">`
+                    : `<div style="width:60px;height:35px;background:var(--step-bg);border-radius:4px;
+                                   display:flex;align-items:center;justify-content:center;font-size:18px;">🎬</div>`
                 }
-                <div style="font-weight: bold; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <div style="font-weight:bold;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                     ${item.title}
                 </div>
             </div>
             <div class="copy-badge">RE-FETCH</div>
         </div>
     `).join('');
+
+    // Attach click handlers via JS — safe no matter what characters are in the URL or title
+    list.querySelectorAll('.history-item').forEach(el => {
+        const i = parseInt(el.dataset.index, 10);
+        el.addEventListener('click', () => reFetch(history[i].url));
+    });
 }
 
-// FIX: reFetch sets the input to the URL and calls fetchVideo.
-// formatInput will detect it starts with 'http' and pass it directly — correct behaviour.
+// reFetch: put the URL back in the input and search again
 window.reFetch = (url) => {
     const input = document.getElementById('videoUrl');
     if (input) {
@@ -303,17 +322,17 @@ window.reFetch = (url) => {
 };
 
 // ==========================================
-// 5. SECURE GRID LOGIC (TRENDING & SEARCH)
+// 5. TRENDING GRID & SEARCH
 // ==========================================
 
 async function searchMovies() {
     const searchInput = document.getElementById('searchInput');
-    const grid = document.getElementById('trendingGrid');
-    const query = searchInput ? searchInput.value.trim() : '';
+    const grid        = document.getElementById('trendingGrid');
+    const query       = searchInput ? searchInput.value.trim() : '';
 
     if (!query) return loadTrendingMovies();
 
-    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; opacity: 0.6;">Searching...</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;opacity:0.6;">Searching...</div>';
 
     try {
         const response = await fetch(`${BACKEND_URL}/api/search?q=${encodeURIComponent(query)}`);
@@ -321,13 +340,13 @@ async function searchMovies() {
         const data = await response.json();
 
         if (!data.results || data.results.length === 0) {
-            grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; opacity: 0.6;">No results found.</p>';
+            grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;opacity:0.6;">No results found.</p>';
             return;
         }
         renderMovieGrid(data.results);
     } catch (err) {
         console.error("Search Error:", err);
-        grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color:#e74c3c;">Search failed. Check your connection.</p>';
+        grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#e74c3c;">Search failed. Check your connection.</p>';
     }
 }
 
@@ -335,7 +354,7 @@ async function loadTrendingMovies() {
     const grid = document.getElementById('trendingGrid');
     if (!grid) return;
 
-    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; opacity: 0.6;">Loading trending...</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;opacity:0.6;">Loading trending...</div>';
 
     try {
         const response = await fetch(`${BACKEND_URL}/api/trending`);
@@ -344,7 +363,7 @@ async function loadTrendingMovies() {
         if (data.results) renderMovieGrid(data.results);
     } catch (err) {
         console.error("Trending Error:", err);
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 20px;">Could not load trending titles.</div>';
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:20px;">Could not load trending titles.</div>';
     }
 }
 
@@ -352,14 +371,15 @@ function renderMovieGrid(movies) {
     const grid = document.getElementById('trendingGrid');
     if (!grid) return;
 
-    grid.innerHTML = movies.slice(0, 10).map(movie => {
-        // FIX: Escape title properly for inline onclick
-        const safeTitle = (movie.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    // FIX 1 (main): use data-title attribute instead of inline onclick string.
+    // Previously: onclick="reFetch('${safeTitle}')" broke on titles with apostrophes
+    // e.g. "Don't Look Up" → onclick="reFetch('Don\'t Look Up')" → JS syntax error → silent fail.
+    grid.innerHTML = movies.slice(0, 10).map((movie, i) => {
         const posterSrc = movie.poster_path
             ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
             : `https://placehold.co/500x750/1e1e1e/888?text=No+Poster`;
         return `
-            <div class="movie-card" onclick="reFetch('${safeTitle}')">
+            <div class="movie-card" data-index="${i}">
                 <img class="movie-poster"
                      src="${posterSrc}"
                      onerror="this.src='https://placehold.co/500x750/1e1e1e/888?text=No+Poster'"
@@ -368,6 +388,15 @@ function renderMovieGrid(movies) {
             </div>
         `;
     }).join('');
+
+    // Attach click handlers via JS — no string escaping needed, no apostrophe breakage
+    const cards = grid.querySelectorAll('.movie-card');
+    cards.forEach((card, i) => {
+        card.addEventListener('click', () => {
+            const title = movies[i].title || '';
+            reFetch(title);   // reFetch → fetchVideo → formatInput → gvsearch1:TITLE
+        });
+    });
 }
 
 // ==========================================
@@ -377,34 +406,26 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHistory();
     loadTrendingMovies();
 
-    const searchBtn = document.getElementById('searchBtn');
+    const searchBtn   = document.getElementById('searchBtn');
     const searchInput = document.getElementById('searchInput');
 
-    if (searchBtn) searchBtn.addEventListener('click', searchMovies);
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') searchMovies();
-        });
-    }
+    if (searchBtn)   searchBtn.addEventListener('click', searchMovies);
+    if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchMovies(); });
 
-    // Also allow Enter key on the main video URL input
+    // Enter key on main input triggers fetch
     const videoUrl = document.getElementById('videoUrl');
-    if (videoUrl) {
-        videoUrl.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') fetchVideo();
-        });
-    }
+    if (videoUrl) videoUrl.addEventListener('keypress', e => { if (e.key === 'Enter') fetchVideo(); });
 
+    // Theme toggle with persistence
     const themeBtn = document.getElementById('themeToggle');
     if (themeBtn) {
-        // Restore saved theme
         const saved = localStorage.getItem('omni_theme') || 'light';
         document.documentElement.setAttribute('data-theme', saved);
         themeBtn.innerText = saved === 'light' ? '🌙 Mode' : '☀️ Mode';
 
         themeBtn.addEventListener('click', () => {
             const current = document.documentElement.getAttribute('data-theme');
-            const next = current === 'light' ? 'dark' : 'light';
+            const next    = current === 'light' ? 'dark' : 'light';
             document.documentElement.setAttribute('data-theme', next);
             themeBtn.innerText = next === 'light' ? '🌙 Mode' : '☀️ Mode';
             localStorage.setItem('omni_theme', next);

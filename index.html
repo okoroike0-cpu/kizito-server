@@ -4,13 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniFetch | Universal Media Pathfinder</title>
+    <meta name="description" content="OmniFetch — Download any video or audio instantly from YouTube, Vimeo, Dailymotion and more. Universal Media Pathfinder.">
 
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.css">
-    <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer/dist/csplayer.min.js"></script>
+    <!--
+        FIX 7: Apply saved theme BEFORE any CSS renders to prevent flash of light theme (FOUC).
+        This tiny script runs synchronously in <head>, before the browser paints anything.
+    -->
+    <script>
+        (function() {
+            const saved = localStorage.getItem('omni_theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
+
+    <!--
+        FIX 6: socket.io with onerror fallback.
+        If the CDN is down, io() would be undefined and kizito2.js crashes entirely
+        on line 8 with ReferenceError — killing fetchVideo, history, everything.
+    -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
+            onerror="window._socketIOFailed=true;console.error('socket.io CDN failed')"></script>
+
+    <!-- FIX 4: Removed jszip — it was imported but never used, adding ~100KB for nothing -->
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.js"></script>
 
     <style>
         :root {
@@ -46,7 +66,7 @@
             font-family: 'Segoe UI', system-ui, sans-serif;
         }
 
-        .container { display: flex; flex-direction: column; align-items: center; padding: 40px 15px; }
+        .container { display: flex; flex-direction: column; align-items: center; padding: 40px 15px 60px; }
 
         .header-box {
             display: flex; align-items: center; justify-content: center;
@@ -70,8 +90,7 @@
         input[type="text"] {
             flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);
             background: var(--input-bg); color: var(--text-color); font-size: 16px;
-            outline: none; transition: border-color 0.2s;
-            width: 100%;
+            outline: none; transition: border-color 0.2s; width: 100%;
         }
         input[type="text"]:focus { border-color: var(--accent); }
 
@@ -85,39 +104,22 @@
         #startBtn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
         #downloadBtn {
-            width: 100%;
-            background: #28a745;
-            padding: 14px 25px;
-            border: none;
-            color: white;
-            font-size: 15px;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: transform 0.2s ease, background 0.2s;
+            width: 100%; background: #28a745; padding: 14px 25px; border: none;
+            color: white; font-size: 15px; font-weight: bold; cursor: pointer;
+            border-radius: 8px; transition: transform 0.2s ease, background 0.2s;
             animation: pulse-green 2s infinite;
         }
         #downloadBtn:hover:not(:disabled) { background: #218838; transform: translateY(-1px); }
         #downloadBtn:disabled { background: #6c757d; animation: none; cursor: not-allowed; }
 
-        /* FIX: videoPreview needs a defined container; csPlayer injects into it */
         #videoPreview {
-            width: 100%;
-            aspect-ratio: 16/9;
-            background: #000;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px;
+            margin-bottom: 15px; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
         }
         #videoPreview img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* Search bar row */
-        .search-row {
-            display: flex; gap: 8px; margin-bottom: 15px;
-        }
+        .search-row { display: flex; gap: 8px; margin-bottom: 15px; }
         .search-row input {
             flex: 1; padding: 10px 14px; border-radius: 8px;
             border: 1px solid var(--border-color); background: var(--input-bg);
@@ -137,6 +139,7 @@
             grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
             gap: 12px;
         }
+
         .movie-card {
             background: var(--card-bg); border-radius: 10px; overflow: hidden;
             transition: transform 0.3s ease, border-color 0.3s ease;
@@ -220,7 +223,7 @@
             color: var(--status-offline); font-size: 11px; padding: 5px 10px;
             opacity: 0.7; transition: all 0.2s; cursor: pointer; border-radius: 5px;
         }
-        .clear-btn:hover { opacity: 1; background: rgba(231, 76, 60, 0.1); border-color: var(--status-offline); }
+        .clear-btn:hover { opacity: 1; background: rgba(231,76,60,0.1); border-color: var(--status-offline); }
 
         #sourceIndicator {
             display: none; font-size: 10px; background: var(--accent); color: white;
@@ -235,8 +238,15 @@
         }
         select:focus { border-color: var(--accent); }
 
+        /* FIX 2: Theme button position:fixed so it stays visible when page scrolls on mobile */
+        .theme-btn-wrap {
+            position: fixed;
+            top: 15px; right: 15px;
+            z-index: 1000;
+        }
+
         @media (max-width: 600px) {
-            .container { padding: 20px 10px; }
+            .container { padding: 20px 10px 60px; }
             .card { padding: 20px; border-radius: 10px; }
             h1 { font-size: 24px; }
             .input-row { flex-direction: column; }
@@ -246,20 +256,27 @@
 </head>
 <body>
 
-    <div style="position: absolute; top: 15px; right: 15px; z-index: 100;">
-        <button id="themeToggle" style="padding: 8px 15px; font-size: 12px; background: var(--card-bg); color: var(--text-color); border: 1px solid var(--border-color); cursor:pointer; border-radius:8px; font-weight:bold;">🌙 Mode</button>
+    <!-- FIX 2: Changed position:absolute → position:fixed via .theme-btn-wrap class -->
+    <div class="theme-btn-wrap">
+        <button id="themeToggle" style="padding:8px 15px;font-size:12px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);cursor:pointer;border-radius:8px;font-weight:bold;">🌙 Mode</button>
     </div>
+
+    <!-- FIX 5: noscript fallback so non-JS users see something useful -->
+    <noscript>
+        <div style="text-align:center;padding:60px 20px;font-family:sans-serif;">
+            <h2>OmniFetch requires JavaScript</h2>
+            <p>Please enable JavaScript in your browser to use OmniFetch.</p>
+        </div>
+    </noscript>
 
     <div class="container">
         <div class="card">
-            <!-- Header -->
             <a href="/" class="header-box">
                 <div id="statusDot" class="status-dot" title="Connecting..."></div>
-                <h1 style="margin: 0; color: var(--accent); font-size: 28px;">OmniFetch</h1>
+                <h1 style="margin:0;color:var(--accent);font-size:28px;">OmniFetch</h1>
             </a>
-            <p style="text-align: center; font-size: 13px; opacity: 0.7; margin-top: 5px; margin-bottom: 0;">Universal Media Pathfinder</p>
+            <p style="text-align:center;font-size:13px;opacity:0.7;margin-top:5px;margin-bottom:0;">Universal Media Pathfinder</p>
 
-            <!-- Main input -->
             <div class="input-row">
                 <input type="text" id="videoUrl" placeholder="Paste link or type video name..." autocomplete="off" />
                 <button onclick="fetchVideo()" id="startBtn">
@@ -268,30 +285,20 @@
                 </button>
             </div>
 
-            <!-- Progress -->
-            <div id="progressText" style="display:none; font-size: 12px; margin-bottom: 5px; text-align: center;"></div>
-            <div id="progressWrapper" style="display:none; background: var(--border-color); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 15px;">
-                <div id="progressBar" style="width: 0%; height: 100%; background: #2ecc71; transition: width 0.3s ease;"></div>
+            <div id="progressText" style="display:none;font-size:12px;margin-bottom:5px;text-align:center;"></div>
+            <div id="progressWrapper" style="display:none;background:var(--border-color);height:6px;border-radius:3px;overflow:hidden;margin-bottom:15px;">
+                <div id="progressBar" style="width:0%;height:100%;background:#2ecc71;transition:width 0.3s ease;"></div>
             </div>
 
-            <!-- Error box -->
-            <div id="errorBox" style="display:none; color: #e74c3c; background: rgba(231,76,60,0.1); padding: 10px; border-radius: 5px; font-size: 13px; margin-bottom: 15px; text-align: center; border: 1px solid #e74c3c;"></div>
+            <div id="errorBox" style="display:none;color:#e74c3c;background:rgba(231,76,60,0.1);padding:10px;border-radius:5px;font-size:13px;margin-bottom:15px;text-align:center;border:1px solid #e74c3c;"></div>
 
-            <!-- Result section -->
             <div id="result" style="display:none;">
-                <!--
-                    FIX: csPlayer needs a real container to inject into.
-                    We give it a div with an id. If csPlayer isn't available,
-                    kizito2.js will inject a thumbnail <img> here instead.
-                -->
                 <div id="videoPreview"></div>
-
                 <div class="meta">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
-                        <strong id="title" style="font-size: 14px; line-height: 1.4; flex: 1;">Media Title</strong>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+                        <strong id="title" style="font-size:14px;line-height:1.4;flex:1;">Media Title</strong>
                         <span id="sourceIndicator"></span>
                     </div>
-
                     <select id="formatSelect">
                         <option value="1080">📹 MP4 Video — HD 1080p</option>
                         <option value="720">📹 MP4 Video — 720p</option>
@@ -300,7 +307,6 @@
                         <option value="240">📹 MP4 Video — 240p (Save Data)</option>
                         <option value="mp3">🎵 MP3 Audio — High Quality</option>
                     </select>
-
                     <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
                 </div>
             </div>
@@ -309,22 +315,17 @@
             <a href="mailto:okoroike0@gmail.com?subject=OmniFetch Bug Report" class="feedback-link">✉ Report Bug / Feedback</a>
         </div>
 
-        <!-- Trending / Search section -->
         <div id="trendingSection">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">🔥 Trending Today</h3>
-
-            <!-- FIX: Search bar was wired in JS but the HTML elements were missing from the trending section -->
+            <h3 style="font-size:14px;opacity:0.7;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">🔥 Trending Today</h3>
             <div class="search-row">
-                <input type="text" id="searchInput" placeholder="Search movies...">
+                <input type="text" id="searchInput" placeholder="Search movies..." autocomplete="off">
                 <button id="searchBtn">Search</button>
             </div>
-
             <div id="trendingGrid"></div>
         </div>
 
-        <!-- How it works -->
         <div class="guide-section">
-            <h3 style="font-size: 14px; opacity: 0.7; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px;">⚙ How it Works</h3>
+            <h3 style="font-size:14px;opacity:0.7;margin-bottom:15px;text-transform:uppercase;letter-spacing:1px;">⚙ How it Works</h3>
             <div class="guide-grid">
                 <div class="step-card"><strong>1. Dispatch</strong><br>Enter a link or name. Our scavenger bots start the hunt.</div>
                 <div class="step-card"><strong>2. Scavenge</strong><br>We bypass trackers to find the cleanest high-speed stream.</div>
@@ -333,15 +334,32 @@
             </div>
         </div>
 
-        <!-- History -->
         <div id="historySection">
             <div class="history-header">
-                <h3 style="font-size: 14px; opacity: 0.7; margin: 0; text-transform: uppercase; letter-spacing: 1px;">🕘 Recent Fetches</h3>
+                <h3 style="font-size:14px;opacity:0.7;margin:0;text-transform:uppercase;letter-spacing:1px;">🕘 Recent Fetches</h3>
                 <button onclick="clearHistory()" class="clear-btn">Clear All</button>
             </div>
             <div id="historyList"></div>
         </div>
     </div>
+
+    <!--
+        FIX 6: If socket.io CDN failed (onerror above set window._socketIOFailed),
+        define a dummy io() so kizito2.js doesn't crash — app works without real-time progress.
+    -->
+    <script>
+        if (window._socketIOFailed || typeof io === 'undefined') {
+            console.warn('socket.io unavailable — defining stub so app still works');
+            window.io = function() {
+                return {
+                    on: function() {},
+                    emit: function() {},
+                    connected: false,
+                    id: ''
+                };
+            };
+        }
+    </script>
 
     <script src="kizito2.js"></script>
 </body>

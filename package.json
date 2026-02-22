@@ -4,7 +4,7 @@
   "description": "Universal Media Pathfinder and Downloader",
   "main": "index.js",
   "scripts": {
-    "build": "pip install -U yt-dlp --break-system-packages || pip3 install -U yt-dlp --break-system-packages || true",
+    "build": "pip install -U yt-dlp --break-system-packages || pip3 install -U yt-dlp --break-system-packages || true && yt-dlp --version",
     "start": "node index.js",
     "dev": "nodemon index.js"
   },

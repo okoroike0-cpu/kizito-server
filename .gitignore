@@ -1,13 +1,33 @@
-# Dependency folders
+# ── Node ──────────────────────────────────────
 node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
 
-# Environment and Secrets
+# ── Environment & Secrets ─────────────────────
 .env
+.env.local
+.env.production
+
+# ── OmniFetch Specific ────────────────────────
+# Cookies file may contain authenticated session tokens — never commit this
 cookies.txt
 
-# OS metadata
+# yt-dlp binary if ever downloaded locally
+yt-dlp
+yt-dlp.exe
+
+# Temp download artifacts
+*.part
+*.ytdl
+
+# ── OS Junk ───────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
-*.log
+# ── Editor Junk ───────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

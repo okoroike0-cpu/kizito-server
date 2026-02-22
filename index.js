@@ -45,12 +45,9 @@ const COMMON_FLAGS = [
     '--geo-bypass',
     '--extractor-retries', '3',
     '--socket-timeout', '20',
-    // ─── FIX: Prevent any extractor (e.g. Dailymotion) from internally
-    // attempting impersonation even when we haven't asked for it.
-    // --no-impersonate was added in yt-dlp 2024.x — update yt-dlp if missing.
-    '--no-impersonate',
-    // Dailymotion's extractor specifically triggers impersonation internally.
-    // This arg tells its extractor to skip that code path entirely.
+    // --no-impersonate intentionally omitted — it doesn't exist in older yt-dlp builds
+    // and causes a hard exit-code-2 crash before any work is done.
+    // extractor-args targets Dailymotion's internal impersonation attempt directly.
     '--extractor-args', 'dailymotion:impersonate=false',
 ];
 
@@ -113,15 +110,17 @@ app.get('/api/info', (req, res) => {
             const badUrl   = stderr.includes('is not a valid URL') || stderr.includes('Unsupported URL');
             // Detect residual impersonation errors even after our flags, so we surface a clear message
             const impersonateErr = stderr.includes('impersonat') || stderr.includes('curl-cffi');
+            const badFlag        = stderr.includes('no such option') || stderr.includes('unrecognized option');
 
             let msg = 'Search failed. Try adding "trailer" or "official video" to the name.';
             if (blocked)        msg = 'Site blocked access (403). Paste a direct video URL instead.';
             if (notFound)       msg = 'No media found for that search. Try a different title.';
             if (botCheck)       msg = 'Platform is rate-limiting us. Wait 30 seconds and try again, or paste the URL directly.';
             if (badUrl)         msg = 'Invalid URL. Check the link and try again.';
-            if (impersonateErr) msg = 'This site requires browser emulation not available on this server. Try pasting a YouTube or direct video URL instead.';
+            if (badFlag)        msg = 'Server configuration error (unsupported yt-dlp flag). Please contact support.';
+            if (impersonateErr) msg = 'This site requires browser emulation not supported on this server. Try a YouTube or direct video URL instead.';
 
-            console.error(`[info] Failed — code=${code} blocked=${blocked} notFound=${notFound} botCheck=${botCheck} impersonateErr=${impersonateErr}`);
+            console.error(`[info] Failed — code=${code} blocked=${blocked} notFound=${notFound} botCheck=${botCheck} badFlag=${badFlag} impersonateErr=${impersonateErr}`);
             return res.status(500).json({ error: msg });
         }
 

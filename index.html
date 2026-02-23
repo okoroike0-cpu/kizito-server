@@ -8,10 +8,6 @@
 
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
 
-    <!--
-        FIX 7: Apply saved theme BEFORE any CSS renders to prevent flash of light theme (FOUC).
-        This tiny script runs synchronously in <head>, before the browser paints anything.
-    -->
     <script>
         (function() {
             const saved = localStorage.getItem('omni_theme');
@@ -19,15 +15,8 @@
         })();
     </script>
 
-    <!--
-        FIX 6: socket.io with onerror fallback.
-        If the CDN is down, io() would be undefined and kizito2.js crashes entirely
-        on line 8 with ReferenceError — killing fetchVideo, history, everything.
-    -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
             onerror="window._socketIOFailed=true;console.error('socket.io CDN failed')"></script>
-
-    <!-- FIX 4: Removed jszip — it was imported but never used, adding ~100KB for nothing -->
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.css">
     <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.js"></script>
@@ -119,6 +108,15 @@
         }
         #videoPreview img { width: 100%; height: 100%; object-fit: cover; }
 
+        /* ── Media type badge shown next to TV show titles ── */
+        .media-type-badge {
+            display: inline-block; font-size: 9px; font-weight: bold;
+            padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+            vertical-align: middle; flex-shrink: 0;
+            background: #6f42c1; color: white; letter-spacing: 0.5px;
+        }
+        .media-type-badge.movie { background: #0d6efd; }
+
         .search-row { display: flex; gap: 8px; margin-bottom: 15px; }
         .search-row input {
             flex: 1; padding: 10px 14px; border-radius: 8px;
@@ -134,16 +132,20 @@
         #searchBtn:hover { background: var(--accent-hover); }
 
         #trendingSection { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
+
+        /* FIX: was minmax(110px) — cards were too squashed, especially on mobile */
         #trendingGrid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+            padding: 10px;
         }
 
         .movie-card {
             background: var(--card-bg); border-radius: 10px; overflow: hidden;
             transition: transform 0.3s ease, border-color 0.3s ease;
             cursor: pointer; border: 1px solid var(--border-color);
+            position: relative;
         }
         .movie-card:hover {
             transform: translateY(-5px);
@@ -154,6 +156,15 @@
         .movie-info {
             padding: 6px; font-size: 11px; font-weight: bold; text-align: center;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* TV badge overlaid on poster corner */
+        .tv-badge {
+            position: absolute; top: 6px; left: 6px;
+            background: #6f42c1; color: white;
+            font-size: 9px; font-weight: bold;
+            padding: 2px 5px; border-radius: 3px;
+            letter-spacing: 0.5px; pointer-events: none;
         }
 
         .share-btn {
@@ -238,7 +249,6 @@
         }
         select:focus { border-color: var(--accent); }
 
-        /* FIX 2: Theme button position:fixed so it stays visible when page scrolls on mobile */
         .theme-btn-wrap {
             position: fixed;
             top: 15px; right: 15px;
@@ -251,17 +261,21 @@
             h1 { font-size: 24px; }
             .input-row { flex-direction: column; }
             .guide-grid { grid-template-columns: 1fr; }
+            /* On mobile, 2 columns of cards fits better than auto */
+            #trendingGrid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                padding: 5px;
+            }
         }
     </style>
 </head>
 <body>
 
-    <!-- FIX 2: Changed position:absolute → position:fixed via .theme-btn-wrap class -->
     <div class="theme-btn-wrap">
         <button id="themeToggle" style="padding:8px 15px;font-size:12px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);cursor:pointer;border-radius:8px;font-weight:bold;">🌙 Mode</button>
     </div>
 
-    <!-- FIX 5: noscript fallback so non-JS users see something useful -->
     <noscript>
         <div style="text-align:center;padding:60px 20px;font-family:sans-serif;">
             <h2>OmniFetch requires JavaScript</h2>
@@ -299,13 +313,12 @@
                         <strong id="title" style="font-size:14px;line-height:1.4;flex:1;">Media Title</strong>
                         <span id="sourceIndicator"></span>
                     </div>
+                    <!-- Format select is rebuilt dynamically by kizito2.js based on available qualities -->
                     <select id="formatSelect">
-                        <option value="1080">📹 MP4 Video — HD 1080p</option>
-                        <option value="720">📹 MP4 Video — 720p</option>
-                        <option value="480" selected>📹 MP4 Video — 480p (Recommended)</option>
-                        <option value="360">📹 MP4 Video — 360p (Light)</option>
-                        <option value="240">📹 MP4 Video — 240p (Save Data)</option>
-                        <option value="mp3">🎵 MP3 Audio — High Quality</option>
+                        <option value="0">📹 MP4 Video — Best Quality</option>
+                        <option value="1">📹 MP4 Video — HD 720p</option>
+                        <option value="2">📹 MP4 Video — SD 480p</option>
+                        <option value="ytdlp_mp3">🎵 MP3 Audio</option>
                     </select>
                     <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
                 </div>
@@ -318,7 +331,8 @@
         <div id="trendingSection">
             <h3 style="font-size:14px;opacity:0.7;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">🔥 Trending Today</h3>
             <div class="search-row">
-                <input type="text" id="searchInput" placeholder="Search movies..." autocomplete="off">
+                <!-- Placeholder updated to reflect TV show support -->
+                <input type="text" id="searchInput" placeholder="Search movies or TV shows..." autocomplete="off">
                 <button id="searchBtn">Search</button>
             </div>
             <div id="trendingGrid"></div>
@@ -343,20 +357,11 @@
         </div>
     </div>
 
-    <!--
-        FIX 6: If socket.io CDN failed (onerror above set window._socketIOFailed),
-        define a dummy io() so kizito2.js doesn't crash — app works without real-time progress.
-    -->
     <script>
         if (window._socketIOFailed || typeof io === 'undefined') {
             console.warn('socket.io unavailable — defining stub so app still works');
             window.io = function() {
-                return {
-                    on: function() {},
-                    emit: function() {},
-                    connected: false,
-                    id: ''
-                };
+                return { on: function() {}, emit: function() {}, connected: false, id: '' };
             };
         }
     </script>

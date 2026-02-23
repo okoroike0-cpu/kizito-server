@@ -10,7 +10,7 @@ package-lock.json
 .env.production
 
 # ── OmniFetch Specific ────────────────────────
-# Cookies file may contain authenticated session tokens — never commit this
+# Cookies file may contain authenticated session tokens — NEVER commit this
 cookies.txt
 
 # yt-dlp binary if ever downloaded locally

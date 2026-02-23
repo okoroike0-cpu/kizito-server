@@ -3,369 +3,332 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniFetch | Universal Media Pathfinder</title>
-    <meta name="description" content="OmniFetch — Download any video or audio instantly from YouTube, Vimeo, Dailymotion and more. Universal Media Pathfinder.">
-
+    <title>OmniFetch | Video & Music Downloader</title>
+    <meta name="description" content="Download videos and music from YouTube, Dailymotion, TikTok, Facebook, Instagram, Vimeo and more.">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
 
-    <script>
-        (function() {
-            const saved = localStorage.getItem('omni_theme');
-            if (saved) document.documentElement.setAttribute('data-theme', saved);
-        })();
-    </script>
-
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
-            onerror="window._socketIOFailed=true;console.error('socket.io CDN failed')"></script>
-
+    <script>(function(){const s=localStorage.getItem('omni_theme');if(s)document.documentElement.setAttribute('data-theme',s);})();</script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" onerror="window._socketIOFailed=true"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.css">
     <script src="https://cdn.jsdelivr.net/gh/abtp2/csplayer@latest/dist/csplayer.min.js"></script>
 
     <style>
         :root {
-            --bg-color: #f4f7f6;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --border-color: #dddddd;
-            --input-bg: #ffffff;
-            --accent: #007bff;
-            --accent-hover: #0056b3;
-            --step-bg: #eef2f3;
-            --status-offline: #e74c3c;
-            --status-online: #2ecc71;
-            --success-glow: rgba(46, 204, 113, 0.6);
+            --bg:      #f0f2f5;
+            --card:    #ffffff;
+            --text:    #1a1a2e;
+            --sub:     #555577;
+            --border:  #e0e0ee;
+            --input:   #ffffff;
+            --accent:  #4f46e5;
+            --accentH: #3730a3;
+            --green:   #16a34a;
+            --greenH:  #15803d;
+            --blue:    #2563eb;
+            --blueH:   #1d4ed8;
+            --red:     #dc2626;
+            --muted:   #f3f4f8;
+            --glow:    rgba(22,163,74,0.4);
         }
-
         [data-theme="dark"] {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --border-color: #444444;
-            --input-bg: #2d2d2d;
-            --step-bg: #252525;
+            --bg:    #0f0f1a;
+            --card:  #1a1a2e;
+            --text:  #e8e8f0;
+            --sub:   #9090b0;
+            --border:#2a2a45;
+            --input: #252540;
+            --muted: #1e1e35;
         }
 
-        * { box-sizing: border-box; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0; padding: 0;
-            transition: background-color 0.3s, color 0.3s;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-        }
+        /* ── page layout ── */
+        .page{display:flex;flex-direction:column;align-items:center;padding:36px 14px 80px;}
 
-        .container { display: flex; flex-direction: column; align-items: center; padding: 40px 15px 60px; }
+        /* ── header card ── */
+        .header-card{background:var(--card);border-radius:18px;box-shadow:0 8px 32px rgba(0,0,0,.08);
+                     width:100%;max-width:580px;padding:28px 28px 24px;margin-bottom:16px;}
 
-        .header-box {
-            display: flex; align-items: center; justify-content: center;
-            gap: 8px; padding: 10px 20px; border-radius: 12px;
-            transition: all 0.3s ease; cursor: pointer; text-decoration: none;
-            user-select: none;
-        }
-        .header-box:hover {
-            background: var(--step-bg);
-            box-shadow: 0 8px 20px rgba(0, 123, 255, 0.2);
-            transform: translateY(-2px);
-        }
+        .logo-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;
+                  text-decoration:none;}
+        .status-dot{width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0;transition:background .4s;}
+        h1{color:var(--accent);font-size:30px;font-weight:800;letter-spacing:-.5px;}
+        .tagline{text-align:center;font-size:13px;color:var(--sub);margin-bottom:20px;}
 
-        .card {
-            background: var(--card-bg); padding: 30px; border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 500px;
-            margin-bottom: 20px; position: relative;
-        }
+        /* ── search row ── */
+        .search-row{display:flex;gap:10px;}
+        .search-row input{flex:1;padding:14px 16px;border-radius:10px;border:1.5px solid var(--border);
+                          background:var(--input);color:var(--text);font-size:15px;outline:none;
+                          transition:border-color .2s;}
+        .search-row input:focus{border-color:var(--accent);}
+        .search-row input::placeholder{color:var(--sub);}
 
-        .input-row { display: flex; gap: 10px; margin: 20px 0; }
-        input[type="text"] {
-            flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);
-            background: var(--input-bg); color: var(--text-color); font-size: 16px;
-            outline: none; transition: border-color 0.2s; width: 100%;
-        }
-        input[type="text"]:focus { border-color: var(--accent); }
+        #startBtn{cursor:pointer;border:none;padding:13px 22px;border-radius:10px;font-weight:700;
+                  font-size:14px;background:var(--accent);color:#fff;display:flex;align-items:center;
+                  gap:7px;transition:all .2s;white-space:nowrap;flex-shrink:0;}
+        #startBtn:hover:not(:disabled){background:var(--accentH);transform:translateY(-1px);}
+        #startBtn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
 
-        #startBtn {
-            cursor: pointer; border: none; padding: 12px 25px; border-radius: 8px;
-            font-weight: bold; background: var(--accent); color: white;
-            display: flex; align-items: center; justify-content: center; gap: 6px;
-            transition: all 0.2s ease; white-space: nowrap; flex-shrink: 0;
-        }
-        #startBtn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
-        #startBtn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .spinner{border:2px solid #fff4;border-top:2px solid #fff;border-radius:50%;
+                 width:15px;height:15px;animation:spin 1s linear infinite;display:none;}
+        @keyframes spin{to{transform:rotate(360deg);}}
 
-        #downloadBtn {
-            width: 100%; background: #28a745; padding: 14px 25px; border: none;
-            color: white; font-size: 15px; font-weight: bold; cursor: pointer;
-            border-radius: 8px; transition: transform 0.2s ease, background 0.2s;
-            animation: pulse-green 2s infinite;
-        }
-        #downloadBtn:hover:not(:disabled) { background: #218838; transform: translateY(-1px); }
-        #downloadBtn:disabled { background: #6c757d; animation: none; cursor: not-allowed; }
+        /* ── hint below input ── */
+        .hint{font-size:11.5px;color:var(--sub);margin-top:10px;text-align:center;line-height:1.5;}
+        .hint span{background:var(--muted);padding:2px 7px;border-radius:5px;margin:0 2px;font-weight:600;}
 
-        #videoPreview {
-            width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px;
-            margin-bottom: 15px; overflow: hidden;
-            display: flex; align-items: center; justify-content: center;
-        }
-        #videoPreview img { width: 100%; height: 100%; object-fit: cover; }
+        /* ── progress ── */
+        .prog-wrap{display:none;background:var(--border);height:5px;border-radius:3px;overflow:hidden;margin-top:14px;}
+        .prog-bar{width:0%;height:100%;background:var(--green);transition:width .3s;}
+        .prog-txt{display:none;font-size:12px;text-align:center;margin-top:6px;color:var(--sub);}
 
-        /* ── Media type badge shown next to TV show titles ── */
-        .media-type-badge {
-            display: inline-block; font-size: 9px; font-weight: bold;
-            padding: 2px 6px; border-radius: 4px; margin-left: 6px;
-            vertical-align: middle; flex-shrink: 0;
-            background: #6f42c1; color: white; letter-spacing: 0.5px;
-        }
-        .media-type-badge.movie { background: #0d6efd; }
+        /* ── error ── */
+        .error-box{display:none;color:var(--red);background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.3);
+                   padding:10px 14px;border-radius:9px;font-size:13px;margin-top:12px;text-align:center;}
 
-        .search-row { display: flex; gap: 8px; margin-bottom: 15px; }
-        .search-row input {
-            flex: 1; padding: 10px 14px; border-radius: 8px;
-            border: 1px solid var(--border-color); background: var(--input-bg);
-            color: var(--text-color); font-size: 14px; outline: none;
-        }
-        .search-row input:focus { border-color: var(--accent); }
-        #searchBtn {
-            padding: 10px 18px; background: var(--accent); color: white;
-            border: none; border-radius: 8px; font-weight: bold; cursor: pointer;
-            font-size: 13px; white-space: nowrap; transition: background 0.2s;
-        }
-        #searchBtn:hover { background: var(--accent-hover); }
+        /* ══════════════════════════════════════════
+           SEARCH RESULTS  (MP3Juice style)
+        ══════════════════════════════════════════ */
+        #searchResults{width:100%;max-width:580px;margin-bottom:16px;display:none;}
+        .results-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+                        color:var(--sub);margin-bottom:10px;}
 
-        #trendingSection { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
+        .result-item{background:var(--card);border:1px solid var(--border);border-radius:12px;
+                     padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;
+                     transition:border-color .2s,box-shadow .2s;}
+        .result-item:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(79,70,229,.1);}
 
-        /* FIX: was minmax(110px) — cards were too squashed, especially on mobile */
-        #trendingGrid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 15px;
-            padding: 10px;
-        }
+        .result-thumb{width:72px;height:48px;border-radius:7px;object-fit:cover;flex-shrink:0;background:var(--muted);}
+        .result-thumb-ph{width:72px;height:48px;border-radius:7px;background:var(--muted);flex-shrink:0;
+                          display:flex;align-items:center;justify-content:center;font-size:22px;}
 
-        .movie-card {
-            background: var(--card-bg); border-radius: 10px; overflow: hidden;
-            transition: transform 0.3s ease, border-color 0.3s ease;
-            cursor: pointer; border: 1px solid var(--border-color);
-            position: relative;
-        }
-        .movie-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--accent);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
-        }
-        .movie-poster { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
-        .movie-info {
-            padding: 6px; font-size: 11px; font-weight: bold; text-align: center;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
+        .result-info{flex:1;min-width:0;}
+        .result-title{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
+                       white-space:nowrap;margin-bottom:5px;line-height:1.3;}
+        .result-title-full{font-size:13px;font-weight:700;line-height:1.3;margin-bottom:5px;}
+        .result-meta{font-size:11px;color:var(--sub);}
 
-        /* TV badge overlaid on poster corner */
-        .tv-badge {
-            position: absolute; top: 6px; left: 6px;
-            background: #6f42c1; color: white;
-            font-size: 9px; font-weight: bold;
-            padding: 2px 5px; border-radius: 3px;
-            letter-spacing: 0.5px; pointer-events: none;
-        }
+        .result-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
 
-        .share-btn {
-            background: none; border: 1px solid var(--border-color);
-            color: var(--text-color); padding: 10px; font-size: 12px;
-            margin-top: 15px; width: 100%; opacity: 0.8;
-            transition: all 0.2s; border-radius: 8px; cursor: pointer; font-weight: bold;
-        }
-        .share-btn:hover { opacity: 1; background: var(--step-bg); border-color: var(--accent); }
+        .btn-mp3{padding:6px 11px;border:none;border-radius:7px;font-size:11px;font-weight:700;
+                  cursor:pointer;background:var(--green);color:#fff;transition:all .15s;white-space:nowrap;}
+        .btn-mp3:hover{background:var(--greenH);transform:translateY(-1px);}
 
-        .feedback-link {
-            display: block; text-align: center; font-size: 11px; margin-top: 15px;
-            color: var(--text-color); opacity: 0.5; text-decoration: none; transition: 0.2s;
-        }
-        .feedback-link:hover { opacity: 1; color: var(--accent); }
+        .btn-mp4{padding:6px 11px;border:none;border-radius:7px;font-size:11px;font-weight:700;
+                  cursor:pointer;background:var(--blue);color:#fff;transition:all .15s;white-space:nowrap;}
+        .btn-mp4:hover{background:var(--blueH);transform:translateY(-1px);}
 
-        @keyframes pulse-green {
-            0%   { box-shadow: 0 0 0 0 var(--success-glow); }
-            70%  { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
-        }
+        .btn-play{padding:6px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:11px;
+                   font-weight:700;cursor:pointer;background:var(--card);color:var(--text);
+                   transition:all .15s;white-space:nowrap;}
+        .btn-play:hover{border-color:var(--accent);color:var(--accent);}
 
-        .guide-section { width: 100%; max-width: 500px; margin-top: 10px; margin-bottom: 25px; }
-        .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .step-card {
-            background: var(--step-bg); padding: 15px; border-radius: 10px;
-            font-size: 13px; border-left: 4px solid var(--accent); line-height: 1.4;
-        }
+        /* busy state on action buttons */
+        .btn-busy{opacity:.6;cursor:not-allowed !important;transform:none !important;}
 
-        .status-dot {
-            height: 8px; width: 8px; border-radius: 50%; display: inline-block;
-            margin-right: 5px; background-color: #e74c3c; flex-shrink: 0;
-        }
+        /* ══════════════════════════════════════════
+           DOWNLOAD RESULT  (URL paste mode)
+        ══════════════════════════════════════════ */
+        #downloadCard{background:var(--card);border-radius:18px;box-shadow:0 8px 32px rgba(0,0,0,.08);
+                      width:100%;max-width:580px;padding:24px;margin-bottom:16px;display:none;}
 
-        .spinner {
-            border: 2px solid #ffffff4d; border-top: 2px solid #fff;
-            border-radius: 50%; width: 16px; height: 16px;
-            animation: spin 1s linear infinite; display: none;
-        }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        #videoPreview{width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;
+                      margin-bottom:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+        #videoPreview img{width:100%;height:100%;object-fit:cover;}
 
-        #historySection { width: 100%; max-width: 500px; margin-top: 10px; display: none; }
-        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .media-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;}
+        #dlTitle{font-size:15px;font-weight:700;line-height:1.4;flex:1;}
+        #sourceChip{display:none;font-size:10px;background:var(--accent);color:#fff;
+                    padding:2px 9px;border-radius:5px;font-weight:700;flex-shrink:0;white-space:nowrap;}
+        #dlMeta{font-size:11.5px;color:var(--sub);margin-bottom:12px;line-height:1.5;}
 
-        .history-item {
-            background: var(--card-bg); padding: 15px; border-radius: 12px;
-            margin-bottom: 10px; cursor: pointer; border: 1px solid var(--border-color);
-            transition: all 0.2s ease;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .history-item:hover {
-            border-color: var(--accent);
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
+        #formatSelect{width:100%;margin:0 0 10px;padding:11px 12px;border-radius:9px;
+                       background:var(--input);color:var(--text);border:1.5px solid var(--border);
+                       font-size:13px;outline:none;cursor:pointer;}
+        #formatSelect:focus{border-color:var(--accent);}
 
-        .copy-badge {
-            background: var(--step-bg); color: var(--accent);
-            padding: 4px 8px; border-radius: 6px; font-size: 10px;
-            font-weight: bold; border: 1px solid var(--border-color);
-            transition: 0.2s; flex-shrink: 0;
-        }
-        .copy-badge:hover { background: var(--accent); color: white; }
+        #downloadBtn{width:100%;background:var(--green);padding:13px;border:none;color:#fff;
+                     font-size:15px;font-weight:700;cursor:pointer;border-radius:10px;
+                     transition:transform .2s,background .2s;animation:pulseG 2s infinite;}
+        #downloadBtn:hover:not(:disabled){background:var(--greenH);transform:translateY(-1px);}
+        #downloadBtn:disabled{background:#6b7280;animation:none;cursor:not-allowed;}
 
-        .clear-btn {
-            background: none; border: 1px solid transparent;
-            color: var(--status-offline); font-size: 11px; padding: 5px 10px;
-            opacity: 0.7; transition: all 0.2s; cursor: pointer; border-radius: 5px;
-        }
-        .clear-btn:hover { opacity: 1; background: rgba(231,76,60,0.1); border-color: var(--status-offline); }
+        @keyframes pulseG{0%{box-shadow:0 0 0 0 var(--glow);}70%{box-shadow:0 0 0 13px rgba(22,163,74,0);}100%{box-shadow:0 0 0 0 rgba(22,163,74,0);}}
 
-        #sourceIndicator {
-            display: none; font-size: 10px; background: var(--accent); color: white;
-            padding: 2px 8px; border-radius: 4px; font-weight: bold; flex-shrink: 0;
-        }
+        /* ── mini player popup (for Play buttons in search results) ── */
+        #miniPlayer{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+                    background:var(--card);border:1px solid var(--border);border-radius:14px;
+                    box-shadow:0 12px 40px rgba(0,0,0,.2);padding:14px 18px;width:94%;max-width:540px;
+                    z-index:500;}
+        #miniPlayer .mp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+        #miniPlayerTitle{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+        #miniPlayerClose{background:none;border:none;font-size:18px;cursor:pointer;color:var(--sub);padding:0 4px;}
+        #miniPlayerInner{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;}
 
-        select {
-            width: 100%; margin: 15px 0; padding: 12px;
-            border-radius: 8px; background: var(--input-bg);
-            color: var(--text-color); border: 1px solid var(--border-color);
-            font-size: 14px; outline: none; cursor: pointer;
-        }
-        select:focus { border-color: var(--accent); }
+        /* ── platforms ── */
+        .platforms{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;
+                   width:100%;max-width:580px;margin-bottom:20px;}
+        .ptag{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;
+              border:1px solid var(--border);background:var(--card);color:var(--sub);}
 
-        .theme-btn-wrap {
-            position: fixed;
-            top: 15px; right: 15px;
-            z-index: 1000;
-        }
+        /* ── how it works ── */
+        .guide{width:100%;max-width:580px;margin-bottom:22px;}
+        .guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+        .step{background:var(--card);border:1px solid var(--border);padding:14px;border-radius:11px;
+              font-size:13px;border-left:4px solid var(--accent);line-height:1.45;color:var(--text);}
+        .step strong{display:block;margin-bottom:3px;}
 
-        @media (max-width: 600px) {
-            .container { padding: 20px 10px 60px; }
-            .card { padding: 20px; border-radius: 10px; }
-            h1 { font-size: 24px; }
-            .input-row { flex-direction: column; }
-            .guide-grid { grid-template-columns: 1fr; }
-            /* On mobile, 2 columns of cards fits better than auto */
-            #trendingGrid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 10px;
-                padding: 5px;
-            }
+        /* ── history ── */
+        #historySection{width:100%;max-width:580px;display:none;margin-top:4px;}
+        .hist-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+        .hist-item{background:var(--card);padding:12px 14px;border-radius:11px;margin-bottom:8px;
+                   cursor:pointer;border:1px solid var(--border);transition:all .2s;
+                   display:flex;justify-content:space-between;align-items:center;}
+        .hist-item:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.08);}
+        .hist-thumb{width:56px;height:34px;object-fit:cover;border-radius:5px;flex-shrink:0;}
+        .hist-no-thumb{width:56px;height:34px;background:var(--muted);border-radius:5px;
+                       display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+        .hist-label{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin:0 10px;}
+        .refetch-badge{background:var(--muted);color:var(--accent);padding:3px 8px;border-radius:6px;
+                       font-size:10px;font-weight:700;border:1px solid var(--border);flex-shrink:0;}
+
+        .clear-btn{background:none;border:1px solid transparent;color:var(--red);font-size:11px;
+                   padding:4px 9px;opacity:.65;transition:all .2s;cursor:pointer;border-radius:5px;}
+        .clear-btn:hover{opacity:1;background:rgba(220,38,38,.08);border-color:var(--red);}
+
+        /* ── share / feedback ── */
+        .share-btn{background:none;border:1px solid var(--border);color:var(--text);padding:9px;
+                   font-size:12px;margin-top:12px;width:100%;opacity:.7;transition:all .2s;
+                   border-radius:9px;cursor:pointer;font-weight:700;}
+        .share-btn:hover{opacity:1;background:var(--muted);border-color:var(--accent);}
+        .feedback-link{display:block;text-align:center;font-size:11px;margin-top:10px;
+                        color:var(--sub);opacity:.6;text-decoration:none;transition:.2s;}
+        .feedback-link:hover{opacity:1;color:var(--accent);}
+
+        /* ── theme toggle ── */
+        #themeToggle{position:fixed;top:14px;right:14px;z-index:999;padding:7px 13px;
+                     font-size:12px;font-weight:700;background:var(--card);color:var(--text);
+                     border:1px solid var(--border);cursor:pointer;border-radius:8px;
+                     box-shadow:0 2px 8px rgba(0,0,0,.08);}
+
+        @media(max-width:600px){
+            .page{padding:14px 10px 70px;}
+            .header-card{padding:18px 14px 16px;}
+            h1{font-size:24px;}
+            .search-row{flex-direction:column;}
+            .guide-grid{grid-template-columns:1fr;}
+            .result-actions{gap:5px;}
+            .result-thumb,.result-thumb-ph{width:58px;height:40px;}
+            #miniPlayer{bottom:10px;width:97%;}
         }
     </style>
 </head>
 <body>
 
-    <div class="theme-btn-wrap">
-        <button id="themeToggle" style="padding:8px 15px;font-size:12px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);cursor:pointer;border-radius:8px;font-weight:bold;">🌙 Mode</button>
+<button id="themeToggle">🌙 Mode</button>
+
+<noscript><div style="text-align:center;padding:60px 20px;"><h2>Please enable JavaScript.</h2></div></noscript>
+
+<div class="page">
+
+    <!-- ── Header / Search card ── -->
+    <div class="header-card">
+        <a href="/" class="logo-row">
+            <div id="statusDot" class="status-dot" title="Connecting…"></div>
+            <h1>OmniFetch</h1>
+        </a>
+        <p class="tagline">Download videos & music from anywhere</p>
+
+        <div class="search-row">
+            <input type="text" id="videoUrl"
+                   placeholder="Paste a link  —or—  type a song / video name…"
+                   autocomplete="off" spellcheck="false" />
+            <button id="startBtn" onclick="fetchVideo()">
+                <span id="btnText">Search</span>
+                <div class="spinner" id="spinner"></div>
+            </button>
+        </div>
+
+        <p class="hint">
+            Paste a URL to download directly &nbsp;·&nbsp;
+            Type a name like <span>Belmont Overstepping</span> to search
+        </p>
+
+        <div class="prog-wrap" id="progressWrapper"><div class="prog-bar" id="progressBar"></div></div>
+        <p class="prog-txt" id="progressText"></p>
+        <div class="error-box" id="errorBox"></div>
+
+        <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
+        <a class="feedback-link" href="mailto:okoroike0@gmail.com?subject=OmniFetch%20Bug">✉ Report Bug / Feedback</a>
     </div>
 
-    <noscript>
-        <div style="text-align:center;padding:60px 20px;font-family:sans-serif;">
-            <h2>OmniFetch requires JavaScript</h2>
-            <p>Please enable JavaScript in your browser to use OmniFetch.</p>
+    <!-- ── Search results (text search mode) ── -->
+    <div id="searchResults">
+        <p class="results-label" id="resultsLabel">Results</p>
+        <div id="resultsList"></div>
+    </div>
+
+    <!-- ── Download card (URL paste mode) ── -->
+    <div id="downloadCard">
+        <div id="videoPreview"></div>
+        <div class="media-title-row">
+            <strong id="dlTitle">Media Title</strong>
+            <span id="sourceChip"></span>
         </div>
-    </noscript>
+        <p id="dlMeta"></p>
+        <select id="formatSelect"><option value="0">📹 MP4 — Best Quality</option></select>
+        <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
+    </div>
 
-    <div class="container">
-        <div class="card">
-            <a href="/" class="header-box">
-                <div id="statusDot" class="status-dot" title="Connecting..."></div>
-                <h1 style="margin:0;color:var(--accent);font-size:28px;">OmniFetch</h1>
-            </a>
-            <p style="text-align:center;font-size:13px;opacity:0.7;margin-top:5px;margin-bottom:0;">Universal Media Pathfinder</p>
+    <!-- ── Supported platforms ── -->
+    <div class="platforms">
+        <span class="ptag">▶ YouTube</span>
+        <span class="ptag">🎵 TikTok</span>
+        <span class="ptag">📘 Facebook</span>
+        <span class="ptag">📸 Instagram</span>
+        <span class="ptag">🐦 Twitter/X</span>
+        <span class="ptag">🎬 Dailymotion</span>
+        <span class="ptag">🎥 Vimeo</span>
+        <span class="ptag">+ more</span>
+    </div>
 
-            <div class="input-row">
-                <input type="text" id="videoUrl" placeholder="Paste link or type video name..." autocomplete="off" />
-                <button onclick="fetchVideo()" id="startBtn">
-                    <span id="btnText">Fetch</span>
-                    <div id="spinner" class="spinner"></div>
-                </button>
-            </div>
-
-            <div id="progressText" style="display:none;font-size:12px;margin-bottom:5px;text-align:center;"></div>
-            <div id="progressWrapper" style="display:none;background:var(--border-color);height:6px;border-radius:3px;overflow:hidden;margin-bottom:15px;">
-                <div id="progressBar" style="width:0%;height:100%;background:#2ecc71;transition:width 0.3s ease;"></div>
-            </div>
-
-            <div id="errorBox" style="display:none;color:#e74c3c;background:rgba(231,76,60,0.1);padding:10px;border-radius:5px;font-size:13px;margin-bottom:15px;text-align:center;border:1px solid #e74c3c;"></div>
-
-            <div id="result" style="display:none;">
-                <div id="videoPreview"></div>
-                <div class="meta">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
-                        <strong id="title" style="font-size:14px;line-height:1.4;flex:1;">Media Title</strong>
-                        <span id="sourceIndicator"></span>
-                    </div>
-                    <!-- Format select is rebuilt dynamically by kizito2.js based on available qualities -->
-                    <select id="formatSelect">
-                        <option value="0">📹 MP4 Video — Best Quality</option>
-                        <option value="1">📹 MP4 Video — HD 720p</option>
-                        <option value="2">📹 MP4 Video — SD 480p</option>
-                        <option value="ytdlp_mp3">🎵 MP3 Audio</option>
-                    </select>
-                    <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
-                </div>
-            </div>
-
-            <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
-            <a href="mailto:okoroike0@gmail.com?subject=OmniFetch Bug Report" class="feedback-link">✉ Report Bug / Feedback</a>
-        </div>
-
-        <div id="trendingSection">
-            <h3 style="font-size:14px;opacity:0.7;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">🔥 Trending Today</h3>
-            <div class="search-row">
-                <!-- Placeholder updated to reflect TV show support -->
-                <input type="text" id="searchInput" placeholder="Search movies or TV shows..." autocomplete="off">
-                <button id="searchBtn">Search</button>
-            </div>
-            <div id="trendingGrid"></div>
-        </div>
-
-        <div class="guide-section">
-            <h3 style="font-size:14px;opacity:0.7;margin-bottom:15px;text-transform:uppercase;letter-spacing:1px;">⚙ How it Works</h3>
-            <div class="guide-grid">
-                <div class="step-card"><strong>1. Dispatch</strong><br>Enter a link or name. Our scavenger bots start the hunt.</div>
-                <div class="step-card"><strong>2. Scavenge</strong><br>We bypass trackers to find the cleanest high-speed stream.</div>
-                <div class="step-card"><strong>3. Convert</strong><br>Files are processed into your chosen format instantly.</div>
-                <div class="step-card"><strong>4. Claim</strong><br>Download directly to your device. No ads, no redirects.</div>
-            </div>
-        </div>
-
-        <div id="historySection">
-            <div class="history-header">
-                <h3 style="font-size:14px;opacity:0.7;margin:0;text-transform:uppercase;letter-spacing:1px;">🕘 Recent Fetches</h3>
-                <button onclick="clearHistory()" class="clear-btn">Clear All</button>
-            </div>
-            <div id="historyList"></div>
+    <!-- ── How it works ── -->
+    <div class="guide">
+        <h3 style="font-size:12px;color:var(--sub);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">⚙ How it Works</h3>
+        <div class="guide-grid">
+            <div class="step"><strong>🔗 Paste a Link</strong>Drop any video URL — we find every quality available.</div>
+            <div class="step"><strong>🔍 Type a Name</strong>Search by song or video title, get MP3 & MP4 instantly.</div>
+            <div class="step"><strong>🎵 Pick Format</strong>Choose Full HD, HD, SD video — or pure MP3 audio.</div>
+            <div class="step"><strong>⬇ Download</strong>Direct to your device. No ads, no sign-up required.</div>
         </div>
     </div>
 
-    <script>
-        if (window._socketIOFailed || typeof io === 'undefined') {
-            console.warn('socket.io unavailable — defining stub so app still works');
-            window.io = function() {
-                return { on: function() {}, emit: function() {}, connected: false, id: '' };
-            };
-        }
-    </script>
+    <!-- ── Recent history ── -->
+    <div id="historySection">
+        <div class="hist-header">
+            <h3 style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:1px;">🕘 Recent Fetches</h3>
+            <button class="clear-btn" onclick="clearHistory()">Clear All</button>
+        </div>
+        <div id="historyList"></div>
+    </div>
 
-    <script src="kizito2.js"></script>
+</div><!-- /page -->
+
+<!-- ── Mini player (floating, for Play button) ── -->
+<div id="miniPlayer">
+    <div class="mp-top">
+        <span id="miniPlayerTitle">Now Playing</span>
+        <button id="miniPlayerClose" onclick="closeMiniPlayer()">✕</button>
+    </div>
+    <div id="miniPlayerInner"></div>
+</div>
+
+<script>
+    if (window._socketIOFailed || typeof io === 'undefined') {
+        window.io = () => ({ on:()=>{}, emit:()=>{}, connected:false, id:'' });
+    }
+</script>
+<script src="kizito2.js"></script>
 </body>
 </html>

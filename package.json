@@ -2,11 +2,11 @@
   "name": "omnifetch-pathfinder",
   "version": "1.0.0",
   "description": "Universal Media Pathfinder and Downloader",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "build": "pip install -U \"yt-dlp[default,curl-cffi]\" --break-system-packages -q || pip3 install -U \"yt-dlp[default,curl-cffi]\" --break-system-packages -q; yt-dlp --version",
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -26,10 +26,5 @@
     "type": "git",
     "url": "git+https://github.com/okoroike0-cpu/kizito-server.git"
   },
-  "keywords": [],
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/okoroike0-cpu/kizito-server/issues"
-  },
-  "homepage": "https://github.com/okoroike0-cpu/kizito-server#readme"
+  "type": "commonjs"
 }

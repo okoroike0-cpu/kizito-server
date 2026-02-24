@@ -16,12 +16,9 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
 
 // ══════════════════════════════════════════════════════════
 //  COOKIES BOOTSTRAP
-//  On Render: set env var YOUTUBE_COOKIES to the full
-//  contents of your cookies.txt file.
-//
-//    Dashboard → Environment → Add Variable
+//  On Render: Dashboard → Environment → Add Variable
 //    Key:   YOUTUBE_COOKIES
-//    Value: (paste cookies.txt contents)
+//    Value: (paste full contents of cookies.txt)
 // ══════════════════════════════════════════════════════════
 
 const COOKIES_PATH = process.env.RENDER
@@ -79,12 +76,10 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // ══════════════════════════════════════════════════════════
 //  SAVETHEVIDEO PROXY
-//  savethevideo.com blocks direct browser CORS — we proxy it.
 // ══════════════════════════════════════════════════════════
 const STV_BASE = 'https://www.savethevideo.com';
 const STV_UA   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-// POST url → get task { id, status }
 app.get('/api/stv/start', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'url required' });
@@ -116,11 +111,10 @@ app.get('/api/stv/start', async (req, res) => {
         res.json(data);
     } catch (err) {
         console.error('[stv/start]', err.message);
-        res.status(500).json({ error: 'SaveTheVideo unreachable. Try a direct YouTube link.' });
+        res.status(500).json({ error: 'SaveTheVideo unreachable.' });
     }
 });
 
-// Poll task → returns links when done
 app.get('/api/stv/check', async (req, res) => {
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: 'id required' });
@@ -137,14 +131,96 @@ app.get('/api/stv/check', async (req, res) => {
 });
 
 
-// ── /api/info — yt-dlp metadata ──────────────────────────
+// ══════════════════════════════════════════════════════════
+//  /api/search  — YouTube search → returns list of results
+//  Uses yt-dlp ytsearch with --flat-playlist (fast, no download)
+//  GET /api/search?q=belmont+overstepping&limit=12
+// ══════════════════════════════════════════════════════════
+app.get('/api/search', (req, res) => {
+    const q     = req.query.q;
+    const limit = Math.min(parseInt(req.query.limit) || 12, 20);
+    if (!q) return res.status(400).json({ error: 'q required' });
+
+    const searchQuery = `ytsearch${limit}:${q}`;
+    const args = withCookies([
+        searchQuery,
+        '--flat-playlist',          // don't fetch full info — just titles/IDs (fast)
+        '--dump-json',
+        '--no-warnings',
+        '--age-limit', '99',        // allow adult content
+        ...COMMON_FLAGS,
+        ...BROWSER_HEADERS,
+    ]);
+
+    console.log(`[search] "${q}" limit=${limit}`);
+    const ytdlp = spawn(YTDLP_PATH, args);
+    let stdout = '', stderr = '';
+
+    ytdlp.stdout.on('data', d => { stdout += d; });
+    ytdlp.stderr.on('data', d => { stderr += d.toString(); });
+
+    const killTimer = setTimeout(() => {
+        ytdlp.kill('SIGTERM');
+        setTimeout(() => { try { ytdlp.kill('SIGKILL'); } catch (_) {} }, 3000);
+        if (!res.headersSent) res.status(504).json({ error: 'Search timed out.' });
+    }, 30000);
+
+    ytdlp.on('close', code => {
+        clearTimeout(killTimer);
+        if (res.headersSent) return;
+
+        const lines   = stdout.trim().split('\n').filter(l => l.startsWith('{'));
+        const results = [];
+
+        for (const line of lines) {
+            try {
+                const e = JSON.parse(line);
+                // --flat-playlist gives minimal fields
+                const id       = e.id       || e.url?.split('v=')[1]?.split('&')[0] || '';
+                const title    = e.title    || e.fulltitle || '';
+                const thumb    = e.thumbnails?.[e.thumbnails.length - 1]?.url
+                              || e.thumbnail
+                              || (id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : '');
+                const duration = e.duration_string || (e.duration ? fmtSecs(e.duration) : '');
+                const channel  = e.channel || e.uploader || e.channel_id || '';
+                if (id && title) results.push({ id, title, thumbnail: thumb, duration, channel });
+            } catch (_) {}
+        }
+
+        if (!results.length) {
+            const botCheck = stderr.includes('Sign in') || stderr.includes('bot') || stderr.includes('429');
+            const msg = botCheck
+                ? 'YouTube is rate-limiting us. Wait 30s and retry.'
+                : 'No results found. Try different keywords.';
+            return res.status(404).json({ error: msg });
+        }
+
+        res.json({ results });
+    });
+});
+
+function fmtSecs(s) {
+    if (!s || isNaN(s)) return '';
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  /api/info  — single video metadata via yt-dlp
+//  Works for ANY URL including adult sites — yt-dlp handles them
+// ══════════════════════════════════════════════════════════
 app.get('/api/info', (req, res) => {
     const userInput = req.query.url;
     if (!userInput) return res.status(400).json({ error: 'Input required' });
 
     const args = withCookies([
-        userInput, '--dump-json', '--no-playlist', '--age-limit', '99',
-        ...COMMON_FLAGS, ...BROWSER_HEADERS,
+        userInput,
+        '--dump-json',
+        '--no-playlist',
+        '--age-limit', '99',        // allow adult content
+        ...COMMON_FLAGS,
+        ...BROWSER_HEADERS,
     ]);
 
     console.log(`[info] ${userInput.slice(0, 80)}`);
@@ -161,7 +237,7 @@ app.get('/api/info', (req, res) => {
     const killTimer = setTimeout(() => {
         ytdlp.kill('SIGTERM');
         setTimeout(() => { try { ytdlp.kill('SIGKILL'); } catch (_) {} }, 3000);
-        if (!res.headersSent) res.status(504).json({ error: 'Timed out. Try a shorter name or paste a direct URL.' });
+        if (!res.headersSent) res.status(504).json({ error: 'Timed out. Paste a direct URL.' });
     }, 30000);
 
     ytdlp.on('close', code => {
@@ -172,11 +248,11 @@ app.get('/api/info', (req, res) => {
             const notFound = stderr.includes('No video formats') || stderr.includes('Unable to extract');
             const botCheck = stderr.includes('Sign in') || stderr.includes('bot') || stderr.includes('429');
             const badUrl   = stderr.includes('is not a valid URL') || stderr.includes('Unsupported URL');
-            let msg = 'Search failed. Try a direct video URL.';
-            if (blocked)  msg = 'Site blocked access (403). Paste a direct URL instead.';
-            if (notFound) msg = 'No media found. Try a different title.';
-            if (botCheck) msg = 'Platform is rate-limiting us. Wait 30s and retry.';
-            if (badUrl)   msg = 'Invalid URL. Check the link and try again.';
+            let msg = 'Could not fetch. Try a direct URL.';
+            if (blocked)  msg = 'Site blocked our request (403). Try pasting the direct video URL.';
+            if (notFound) msg = 'No media found at this URL.';
+            if (botCheck) msg = 'Rate limited. Wait 30s and retry.';
+            if (badUrl)   msg = 'Invalid URL. Check the link.';
             return res.status(500).json({ error: msg });
         }
         try {
@@ -184,21 +260,26 @@ app.get('/api/info', (req, res) => {
             const info = JSON.parse(jsonLine);
             res.json({
                 success:   true,
-                title:     info.title           || 'Unknown Title',
-                thumbnail: info.thumbnail       || null,
-                videoId:   info.id              || null,
+                title:     info.title            || 'Unknown Title',
+                thumbnail: info.thumbnail        || null,
+                videoId:   info.id               || null,
                 url:       info.webpage_url || info.url || userInput,
-                duration:  info.duration_string || null,
-                source:    info.extractor_key   || null,
+                duration:  info.duration_string  || null,
+                uploader:  info.uploader         || info.channel || null,
+                source:    info.extractor_key    || null,
             });
         } catch (e) {
-            res.status(500).json({ error: 'Could not parse media data. Try pasting a direct URL.' });
+            res.status(500).json({ error: 'Could not parse media data.' });
         }
     });
 });
 
 
-// ── /download — yt-dlp stream ─────────────────────────────
+// ══════════════════════════════════════════════════════════
+//  /download  — stream video/audio via yt-dlp
+//  Supports any URL yt-dlp supports (YouTube, Dailymotion,
+//  adult sites, TikTok, Twitter, Vimeo, Instagram, etc.)
+// ══════════════════════════════════════════════════════════
 app.get('/download', (req, res) => {
     const { url, format, socketId } = req.query;
     if (!url) return res.status(400).send('Source URL required');
@@ -212,11 +293,18 @@ app.get('/download', (req, res) => {
     if (isAudio) {
         fmtArgs = ['-x', '--audio-format', 'mp3', '--audio-quality', '0'];
     } else {
-        const h = ['1080','720','480','360','240'].includes(format) ? format : '480';
-        fmtArgs = ['-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/best[height<=${h}]/best`];
+        const h = ['1080', '720', '480', '360', '240'].includes(format) ? format : '480';
+        fmtArgs = [
+            '-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/best[height<=${h}]/best`,
+            '--merge-output-format', 'mp4',   // always merge into mp4, never mkv/webm
+        ];
     }
 
-    const args  = withCookies([url, '-o', '-', '--no-part', ...COMMON_FLAGS, ...BROWSER_HEADERS, ...fmtArgs]);
+    const args  = withCookies([
+        url, '-o', '-', '--no-part',
+        '--age-limit', '99',        // allow adult content
+        ...COMMON_FLAGS, ...BROWSER_HEADERS, ...fmtArgs,
+    ]);
     const ytdlp = spawn(YTDLP_PATH, args);
     ytdlp.stdout.pipe(res);
 

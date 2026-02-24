@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniFetch | Video & Music Downloader</title>
+    <title>OmniFetch | Video &amp; Music Downloader</title>
     <meta name="description" content="Download videos and music from YouTube, Dailymotion, TikTok, Facebook, Instagram, Vimeo and more.">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2583/2583434.png">
 
@@ -39,186 +39,136 @@
             --input: #252540;
             --muted: #1e1e35;
         }
-
         *{box-sizing:border-box;margin:0;padding:0;}
         body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
-
-        /* ── page layout ── */
         .page{display:flex;flex-direction:column;align-items:center;padding:36px 14px 80px;}
-
-        /* ── header card ── */
         .header-card{background:var(--card);border-radius:18px;box-shadow:0 8px 32px rgba(0,0,0,.08);
                      width:100%;max-width:580px;padding:28px 28px 24px;margin-bottom:16px;}
-
-        .logo-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;
-                  text-decoration:none;}
+        .logo-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;text-decoration:none;}
         .status-dot{width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0;transition:background .4s;}
         h1{color:var(--accent);font-size:30px;font-weight:800;letter-spacing:-.5px;}
         .tagline{text-align:center;font-size:13px;color:var(--sub);margin-bottom:20px;}
-
-        /* ── search row ── */
         .search-row{display:flex;gap:10px;}
         .search-row input{flex:1;padding:14px 16px;border-radius:10px;border:1.5px solid var(--border);
-                          background:var(--input);color:var(--text);font-size:15px;outline:none;
-                          transition:border-color .2s;}
+                          background:var(--input);color:var(--text);font-size:15px;outline:none;transition:border-color .2s;}
         .search-row input:focus{border-color:var(--accent);}
         .search-row input::placeholder{color:var(--sub);}
-
+        #clearBtn{cursor:pointer;border:none;padding:13px 14px;border-radius:10px;font-weight:700;
+                  font-size:15px;background:var(--muted);color:var(--sub);transition:all .2s;
+                  flex-shrink:0;display:none;line-height:1;}
+        #clearBtn:hover{background:rgba(220,38,38,.12);color:var(--red);}
         #startBtn{cursor:pointer;border:none;padding:13px 22px;border-radius:10px;font-weight:700;
                   font-size:14px;background:var(--accent);color:#fff;display:flex;align-items:center;
                   gap:7px;transition:all .2s;white-space:nowrap;flex-shrink:0;}
         #startBtn:hover:not(:disabled){background:var(--accentH);transform:translateY(-1px);}
         #startBtn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
-
         .spinner{border:2px solid #fff4;border-top:2px solid #fff;border-radius:50%;
                  width:15px;height:15px;animation:spin 1s linear infinite;display:none;}
         @keyframes spin{to{transform:rotate(360deg);}}
-
-        /* ── hint below input ── */
         .hint{font-size:11.5px;color:var(--sub);margin-top:10px;text-align:center;line-height:1.5;}
         .hint span{background:var(--muted);padding:2px 7px;border-radius:5px;margin:0 2px;font-weight:600;}
-
-        /* ── progress ── */
         .prog-wrap{display:none;background:var(--border);height:5px;border-radius:3px;overflow:hidden;margin-top:14px;}
         .prog-bar{width:0%;height:100%;background:var(--green);transition:width .3s;}
         .prog-txt{display:none;font-size:12px;text-align:center;margin-top:6px;color:var(--sub);}
-
-        /* ── error ── */
         .error-box{display:none;color:var(--red);background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.3);
                    padding:10px 14px;border-radius:9px;font-size:13px;margin-top:12px;text-align:center;}
-
-        /* ══════════════════════════════════════════
-           SEARCH RESULTS  (MP3Juice style)
-        ══════════════════════════════════════════ */
         #searchResults{width:100%;max-width:580px;margin-bottom:16px;display:none;}
         .results-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
                         color:var(--sub);margin-bottom:10px;}
-
         .result-item{background:var(--card);border:1px solid var(--border);border-radius:12px;
                      padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;
                      transition:border-color .2s,box-shadow .2s;}
         .result-item:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(79,70,229,.1);}
-
         .result-thumb{width:72px;height:48px;border-radius:7px;object-fit:cover;flex-shrink:0;background:var(--muted);}
         .result-thumb-ph{width:72px;height:48px;border-radius:7px;background:var(--muted);flex-shrink:0;
                           display:flex;align-items:center;justify-content:center;font-size:22px;}
-
         .result-info{flex:1;min-width:0;}
         .result-title{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
                        white-space:nowrap;margin-bottom:5px;line-height:1.3;}
-        .result-title-full{font-size:13px;font-weight:700;line-height:1.3;margin-bottom:5px;}
         .result-meta{font-size:11px;color:var(--sub);}
-
         .result-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
-
         .btn-mp3{padding:6px 11px;border:none;border-radius:7px;font-size:11px;font-weight:700;
                   cursor:pointer;background:var(--green);color:#fff;transition:all .15s;white-space:nowrap;}
         .btn-mp3:hover{background:var(--greenH);transform:translateY(-1px);}
-
         .btn-mp4{padding:6px 11px;border:none;border-radius:7px;font-size:11px;font-weight:700;
                   cursor:pointer;background:var(--blue);color:#fff;transition:all .15s;white-space:nowrap;}
         .btn-mp4:hover{background:var(--blueH);transform:translateY(-1px);}
-
         .btn-play{padding:6px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:11px;
                    font-weight:700;cursor:pointer;background:var(--card);color:var(--text);
                    transition:all .15s;white-space:nowrap;}
         .btn-play:hover{border-color:var(--accent);color:var(--accent);}
-
-        /* busy state on action buttons */
         .btn-busy{opacity:.6;cursor:not-allowed !important;transform:none !important;}
-
-        /* ══════════════════════════════════════════
-           DOWNLOAD RESULT  (URL paste mode)
-        ══════════════════════════════════════════ */
         #downloadCard{background:var(--card);border-radius:18px;box-shadow:0 8px 32px rgba(0,0,0,.08);
                       width:100%;max-width:580px;padding:24px;margin-bottom:16px;display:none;}
-
         #videoPreview{width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;
                       margin-bottom:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
         #videoPreview img{width:100%;height:100%;object-fit:cover;}
-
         .media-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;}
         #dlTitle{font-size:15px;font-weight:700;line-height:1.4;flex:1;}
         #sourceChip{display:none;font-size:10px;background:var(--accent);color:#fff;
                     padding:2px 9px;border-radius:5px;font-weight:700;flex-shrink:0;white-space:nowrap;}
         #dlMeta{font-size:11.5px;color:var(--sub);margin-bottom:12px;line-height:1.5;}
-
         #formatSelect{width:100%;margin:0 0 10px;padding:11px 12px;border-radius:9px;
                        background:var(--input);color:var(--text);border:1.5px solid var(--border);
                        font-size:13px;outline:none;cursor:pointer;}
         #formatSelect:focus{border-color:var(--accent);}
-
         #downloadBtn{width:100%;background:var(--green);padding:13px;border:none;color:#fff;
                      font-size:15px;font-weight:700;cursor:pointer;border-radius:10px;
                      transition:transform .2s,background .2s;animation:pulseG 2s infinite;}
         #downloadBtn:hover:not(:disabled){background:var(--greenH);transform:translateY(-1px);}
         #downloadBtn:disabled{background:#6b7280;animation:none;cursor:not-allowed;}
-
         @keyframes pulseG{0%{box-shadow:0 0 0 0 var(--glow);}70%{box-shadow:0 0 0 13px rgba(22,163,74,0);}100%{box-shadow:0 0 0 0 rgba(22,163,74,0);}}
-
-        /* ── mini player popup (for Play buttons in search results) ── */
         #miniPlayer{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
                     background:var(--card);border:1px solid var(--border);border-radius:14px;
-                    box-shadow:0 12px 40px rgba(0,0,0,.2);padding:14px 18px;width:94%;max-width:540px;
-                    z-index:500;}
+                    box-shadow:0 12px 40px rgba(0,0,0,.2);padding:14px 18px;width:94%;max-width:540px;z-index:500;}
         #miniPlayer .mp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
         #miniPlayerTitle{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
         #miniPlayerClose{background:none;border:none;font-size:18px;cursor:pointer;color:var(--sub);padding:0 4px;}
         #miniPlayerInner{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;}
-
-        /* ── platforms ── */
         .platforms{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;
                    width:100%;max-width:580px;margin-bottom:20px;}
         .ptag{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;
               border:1px solid var(--border);background:var(--card);color:var(--sub);}
-
-        /* ── how it works ── */
         .guide{width:100%;max-width:580px;margin-bottom:22px;}
         .guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
         .step{background:var(--card);border:1px solid var(--border);padding:14px;border-radius:11px;
               font-size:13px;border-left:4px solid var(--accent);line-height:1.45;color:var(--text);}
         .step strong{display:block;margin-bottom:3px;}
-
-        /* ── history ── */
         #historySection{width:100%;max-width:580px;display:none;margin-top:4px;}
         .hist-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
         .hist-item{background:var(--card);padding:12px 14px;border-radius:11px;margin-bottom:8px;
-                   cursor:pointer;border:1px solid var(--border);transition:all .2s;
-                   display:flex;justify-content:space-between;align-items:center;}
+                   cursor:pointer;border:1px solid var(--border);transition:all .2s;display:flex;align-items:center;}
         .hist-item:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.08);}
         .hist-thumb{width:56px;height:34px;object-fit:cover;border-radius:5px;flex-shrink:0;}
         .hist-no-thumb{width:56px;height:34px;background:var(--muted);border-radius:5px;
                        display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
-        .hist-label{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin:0 10px;}
+        .hist-label{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;
+                    white-space:nowrap;flex:1;margin:0 10px;}
         .refetch-badge{background:var(--muted);color:var(--accent);padding:3px 8px;border-radius:6px;
                        font-size:10px;font-weight:700;border:1px solid var(--border);flex-shrink:0;}
-
         .clear-btn{background:none;border:1px solid transparent;color:var(--red);font-size:11px;
                    padding:4px 9px;opacity:.65;transition:all .2s;cursor:pointer;border-radius:5px;}
         .clear-btn:hover{opacity:1;background:rgba(220,38,38,.08);border-color:var(--red);}
-
-        /* ── share / feedback ── */
         .share-btn{background:none;border:1px solid var(--border);color:var(--text);padding:9px;
                    font-size:12px;margin-top:12px;width:100%;opacity:.7;transition:all .2s;
                    border-radius:9px;cursor:pointer;font-weight:700;}
         .share-btn:hover{opacity:1;background:var(--muted);border-color:var(--accent);}
         .feedback-link{display:block;text-align:center;font-size:11px;margin-top:10px;
-                        color:var(--sub);opacity:.6;text-decoration:none;transition:.2s;}
+                        color:var(--sub);opacity:.6;text-decoration:none;transition:.2s;cursor:pointer;}
         .feedback-link:hover{opacity:1;color:var(--accent);}
-
-        /* ── theme toggle ── */
         #themeToggle{position:fixed;top:14px;right:14px;z-index:999;padding:7px 13px;
                      font-size:12px;font-weight:700;background:var(--card);color:var(--text);
                      border:1px solid var(--border);cursor:pointer;border-radius:8px;
                      box-shadow:0 2px 8px rgba(0,0,0,.08);}
-
         @media(max-width:600px){
             .page{padding:14px 10px 70px;}
             .header-card{padding:18px 14px 16px;}
             h1{font-size:24px;}
             .search-row{flex-direction:column;}
             .guide-grid{grid-template-columns:1fr;}
-            .result-actions{gap:5px;}
+            .result-item{flex-wrap:wrap;}
+            .result-actions{flex-direction:column;width:100%;margin-top:10px;gap:6px;}
+            .btn-mp3,.btn-mp4,.btn-play{width:100%;text-align:center;padding:8px;}
             .result-thumb,.result-thumb-ph{width:58px;height:40px;}
             #miniPlayer{bottom:10px;width:97%;}
         }
@@ -226,24 +176,24 @@
 </head>
 <body>
 
-<button id="themeToggle">🌙 Mode</button>
+<button id="themeToggle">&#x1F319; Mode</button>
 
 <noscript><div style="text-align:center;padding:60px 20px;"><h2>Please enable JavaScript.</h2></div></noscript>
 
 <div class="page">
 
-    <!-- ── Header / Search card ── -->
     <div class="header-card">
         <a href="/" class="logo-row">
-            <div id="statusDot" class="status-dot" title="Connecting…"></div>
+            <div id="statusDot" class="status-dot" title="Connecting..."></div>
             <h1>OmniFetch</h1>
         </a>
-        <p class="tagline">Download videos & music from anywhere</p>
+        <p class="tagline">Download videos &amp; music from anywhere</p>
 
         <div class="search-row">
             <input type="text" id="videoUrl"
-                   placeholder="Paste a link  —or—  type a song / video name…"
+                   placeholder="Paste a link  —or—  type a song / video name..."
                    autocomplete="off" spellcheck="false" />
+            <button id="clearBtn" onclick="clearInput()" title="Clear">&#x2715;</button>
             <button id="startBtn" onclick="fetchVideo()">
                 <span id="btnText">Search</span>
                 <div class="spinner" id="spinner"></div>
@@ -251,25 +201,27 @@
         </div>
 
         <p class="hint">
-            Paste a URL to download directly &nbsp;·&nbsp;
+            Paste a URL to download directly &nbsp;&middot;&nbsp;
             Type a name like <span>Belmont Overstepping</span> to search
         </p>
 
-        <div class="prog-wrap" id="progressWrapper"><div class="prog-bar" id="progressBar"></div></div>
+        <div class="prog-wrap" id="progressWrapper">
+            <div class="prog-bar" id="progressBar"></div>
+        </div>
         <p class="prog-txt" id="progressText"></p>
         <div class="error-box" id="errorBox"></div>
 
-        <button class="share-btn" onclick="shareSite()">🔗 Share OmniFetch</button>
-        <a class="feedback-link" href="mailto:okoroike0@gmail.com?subject=OmniFetch%20Bug">✉ Report Bug / Feedback</a>
+        <button class="share-btn" onclick="shareSite()">&#x1F517; Share OmniFetch</button>
+        <span class="feedback-link" onclick="window.location='mai'+'lto:okoroike0@gm'+'ail.com?subject=OmniFetch%20Bug'">&#x2709; Report Bug / Feedback</span>
     </div>
 
-    <!-- ── Search results (text search mode) ── -->
+    <!-- Search results -->
     <div id="searchResults">
         <p class="results-label" id="resultsLabel">Results</p>
         <div id="resultsList"></div>
     </div>
 
-    <!-- ── Download card (URL paste mode) ── -->
+    <!-- Download card -->
     <div id="downloadCard">
         <div id="videoPreview"></div>
         <div class="media-title-row">
@@ -277,49 +229,51 @@
             <span id="sourceChip"></span>
         </div>
         <p id="dlMeta"></p>
-        <select id="formatSelect"><option value="0">📹 MP4 — Best Quality</option></select>
-        <button id="downloadBtn" onclick="triggerDownload()">⬇ Download Now</button>
+        <select id="formatSelect">
+            <option value="0">&#x1F4F9; MP4 &mdash; Best Quality</option>
+        </select>
+        <button id="downloadBtn" onclick="triggerDownload()">&#x2B07; Download Now</button>
     </div>
 
-    <!-- ── Supported platforms ── -->
+    <!-- Platforms -->
     <div class="platforms">
-        <span class="ptag">▶ YouTube</span>
-        <span class="ptag">🎵 TikTok</span>
-        <span class="ptag">📘 Facebook</span>
-        <span class="ptag">📸 Instagram</span>
-        <span class="ptag">🐦 Twitter/X</span>
-        <span class="ptag">🎬 Dailymotion</span>
-        <span class="ptag">🎥 Vimeo</span>
+        <span class="ptag">&#x25B6; YouTube</span>
+        <span class="ptag">&#x1F3B5; TikTok</span>
+        <span class="ptag">&#x1F4D8; Facebook</span>
+        <span class="ptag">&#x1F4F8; Instagram</span>
+        <span class="ptag">&#x1F426; Twitter/X</span>
+        <span class="ptag">&#x1F3AC; Dailymotion</span>
+        <span class="ptag">&#x1F3A5; Vimeo</span>
         <span class="ptag">+ more</span>
     </div>
 
-    <!-- ── How it works ── -->
+    <!-- How it works -->
     <div class="guide">
-        <h3 style="font-size:12px;color:var(--sub);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">⚙ How it Works</h3>
+        <h3 style="font-size:12px;color:var(--sub);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">&#x2699; How it Works</h3>
         <div class="guide-grid">
-            <div class="step"><strong>🔗 Paste a Link</strong>Drop any video URL — we find every quality available.</div>
-            <div class="step"><strong>🔍 Type a Name</strong>Search by song or video title, get MP3 & MP4 instantly.</div>
-            <div class="step"><strong>🎵 Pick Format</strong>Choose Full HD, HD, SD video — or pure MP3 audio.</div>
-            <div class="step"><strong>⬇ Download</strong>Direct to your device. No ads, no sign-up required.</div>
+            <div class="step"><strong>&#x1F517; Paste a Link</strong>Drop any video URL &mdash; we find every quality available.</div>
+            <div class="step"><strong>&#x1F50D; Type a Name</strong>Search by song or video title, get MP3 &amp; MP4 instantly.</div>
+            <div class="step"><strong>&#x1F3B5; Pick Format</strong>Choose Full HD, HD, SD video &mdash; or pure MP3 audio.</div>
+            <div class="step"><strong>&#x2B07; Download</strong>Direct to your device. No ads, no sign-up required.</div>
         </div>
     </div>
 
-    <!-- ── Recent history ── -->
+    <!-- Recent history -->
     <div id="historySection">
         <div class="hist-header">
-            <h3 style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:1px;">🕘 Recent Fetches</h3>
+            <h3 style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:1px;">&#x1F558; Recent Fetches</h3>
             <button class="clear-btn" onclick="clearHistory()">Clear All</button>
         </div>
         <div id="historyList"></div>
     </div>
 
-</div><!-- /page -->
+</div>
 
-<!-- ── Mini player (floating, for Play button) ── -->
+<!-- Mini player -->
 <div id="miniPlayer">
     <div class="mp-top">
         <span id="miniPlayerTitle">Now Playing</span>
-        <button id="miniPlayerClose" onclick="closeMiniPlayer()">✕</button>
+        <button id="miniPlayerClose" onclick="closeMiniPlayer()">&#x2715;</button>
     </div>
     <div id="miniPlayerInner"></div>
 </div>

@@ -1,21 +1,25 @@
 // ============================================================
-// OMNIFETCH — kizito2.js  (v9 — Dual Mode)
+// OMNIFETCH — kizito2.js  (v10 — Final)
 //
-// MODE A — URL PASTE  → download card
-//   YouTube URL  →  ① DL-MP3 quality list + STV metadata
+// ✅ NO hardcoded API tokens or secrets in this file.
+//    All sensitive config (YOUTUBE_COOKIES) lives in
+//    Render → Environment Variables only.
+//
+// MODE A — URL PASTE  →  download card
+//   YouTube URL   →  ① DL-MP3 qualities + STV metadata
 //   Any other URL →  ② STV proxy quality list
-//   All fallback  →  ③ yt-dlp server
-//   Total failure →  STV browser tab opened
+//   Any fallback  →  ③ yt-dlp server (supports adult sites,
+//                      Dailymotion, Vimeo, Twitter, TikTok, etc.)
+//   Total failure →  STV browser tab opened as last resort
 //
 // MODE B — TEXT SEARCH  →  MP3Juice-style results list
-//   Search via DL-MP3 API → list of YouTube videos
-//   Each result has: [🎵 MP3 Download] [📹 MP4 Download] [▶ Play]
-//   MP3  → dlmp3_audio(ytId)  → direct browser download
-//   MP4  → dlmp3_videos(ytId) → pick best quality → direct download
-//   Play → floating mini-player (csPlayer iframe)
+//   /api/search on server runs ytsearch via yt-dlp (fast)
+//   Each result: [🎵 MP3] [📹 MP4 ▾ quality] [▶ Play]
+//   MP3  → dlmp3_audio(ytId)       → direct download
+//   MP4  → dlmp3_videos(ytId)      → quality picker popup → direct download
+//   Play → floating mini-player
 // ============================================================
 
-// ── Config ────────────────────────────────────
 const BACKEND_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:3000'
     : 'https://kizito-server.onrender.com';
@@ -101,7 +105,7 @@ function platformOf(url) {
 function fmtSecs(s) {
     if (!s || isNaN(s)) return '';
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-    return `${m}:${String(sec).padStart(2,'0')}`;
+    return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 // ── UI helpers ────────────────────────────────
@@ -110,10 +114,7 @@ function showErr(msg) {
     if (!b) return;
     b.textContent = msg; b.style.display = 'block';
 }
-function hideErr() {
-    const b = document.getElementById('errorBox');
-    if (b) b.style.display = 'none';
-}
+function hideErr() { const b = document.getElementById('errorBox'); if (b) b.style.display = 'none'; }
 
 function setBtnLoading(label = 'Searching…') {
     const btn = document.getElementById('startBtn'); if (btn) btn.disabled = true;
@@ -125,19 +126,18 @@ function setBtnReady(label = 'Search') {
     const sp  = document.getElementById('spinner');  if (sp)  sp.style.display = 'none';
     const tx  = document.getElementById('btnText');  if (tx)  tx.textContent = label;
 }
-
 function setDlBtn(text, disabled = false) {
     const b = document.getElementById('downloadBtn');
     if (!b) return;
-    b.textContent  = text;
-    b.disabled     = disabled;
+    b.textContent = text; b.disabled = disabled;
     b.style.animation  = disabled ? 'none' : '';
     b.style.background = disabled ? '#6b7280' : '';
 }
 
 function showDownloadCard() {
-    document.getElementById('downloadCard').style.display = 'block';
+    document.getElementById('downloadCard').style.display  = 'block';
     document.getElementById('searchResults').style.display = 'none';
+    closeQualityPicker();
 }
 function showSearchResults() {
     document.getElementById('searchResults').style.display = 'block';
@@ -148,7 +148,7 @@ function hideAll() {
     document.getElementById('searchResults').style.display = 'none';
 }
 
-function setDlTitle(t) { const e = document.getElementById('dlTitle'); if (e) e.textContent = t || 'Unknown Title'; }
+function setDlTitle(t) { const e = document.getElementById('dlTitle'); if (e) e.textContent = t || 'Unknown'; }
 function setDlMeta(parts) { const e = document.getElementById('dlMeta'); if (e) e.textContent = parts.filter(Boolean).join('  ·  '); }
 function setChip(label) {
     const s = document.getElementById('sourceChip');
@@ -162,21 +162,8 @@ function setPreview(html) {
 }
 
 // ══════════════════════════════════════════════
-// ENGINE ①  download-lagu-mp3  (YouTube)
+// ENGINE ①  download-lagu-mp3  (YouTube direct)
 // ══════════════════════════════════════════════
-
-async function dlmp3_search(query) {
-    // The DL-MP3 API accepts a search query and returns video list
-    const url = `${DLMP3_BASE}/search/${encodeURIComponent(query)}`;
-    const res  = await fetch(url, { signal: AbortSignal.timeout(20000) });
-    if (!res.ok) throw new Error(`DL-MP3 search ${res.status}`);
-    const data = await res.json();
-    // Returns array of { videoId, title, thumbnail, duration, ... }
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data?.result)) return data.result;
-    if (Array.isArray(data?.data))   return data.data;
-    throw new Error('Unexpected DL-MP3 search response');
-}
 
 async function dlmp3_videos(ytId) {
     const res  = await fetch(`${DLMP3_BASE}/videos/${ytId}`, { signal: AbortSignal.timeout(20000) });
@@ -186,12 +173,12 @@ async function dlmp3_videos(ytId) {
     return Object.values(data.vidInfo)
         .filter(v => v.dloadUrl)
         .map(v => ({
-            quality : parseInt(String(v.quality || '0').replace(/p$/i,'')) || 0,
+            quality : parseInt(String(v.quality || '0').replace(/p$/i, '')) || 0,
             size    : v.rSize  || '',
             url     : v.dloadUrl.startsWith('//') ? 'https:' + v.dloadUrl : v.dloadUrl,
             ftype   : (v.ftype || 'mp4').toLowerCase(),
         }))
-        .sort((a,b) => b.quality - a.quality);
+        .sort((a, b) => b.quality - a.quality);
 }
 
 async function dlmp3_audio(ytId) {
@@ -241,21 +228,21 @@ async function stv_fetch(url, onStatus) {
 function stvBrowserFallback(url) {
     if (!isUrl(url)) return;
     window.open(`${STV_HOME}?url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
-    showErr('⚠️ Our proxy failed — SaveTheVideo.com opened in a new tab. Paste your link there to download.');
+    showErr('⚠️ Our proxy failed — SaveTheVideo.com opened in a new tab. Paste your link there.');
 }
 
 function stvQualityLabel(l) {
-    const icon = (l.type === 'mp3' || l.type === 'audio') ? '🎵' : '📼';
-    const type = (l.type || 'MP4').toUpperCase();
+    const icon  = (l.type === 'mp3' || l.type === 'audio') ? '🎵' : '📼';
+    const type  = (l.type || 'MP4').toUpperCase();
     const parts = [`${icon} ${type}`];
     if (l.quality) {
         const q = String(l.quality);
-        if (/^(2160|4k|uhd)/i.test(q))        parts.push('4K');
-        else if (/^(1080|full.?hd)/i.test(q))  parts.push('Full HD');
-        else if (/^(720|hd)/i.test(q))          parts.push('HD');
-        else if (/^(480|sd)/i.test(q))          parts.push('SD');
-        else if (/^(360|ld)/i.test(q))          parts.push('SD 360p');
-        else                                     parts.push(q);
+        if (/^(2160|4k|uhd)/i.test(q))       parts.push('4K');
+        else if (/^(1080|full.?hd)/i.test(q)) parts.push('Full HD');
+        else if (/^(720|hd)/i.test(q))        parts.push('HD');
+        else if (/^(480|sd)/i.test(q))        parts.push('SD');
+        else if (/^(360|ld)/i.test(q))        parts.push('SD 360p');
+        else                                   parts.push(q);
     }
     if (l.resolution) parts.push(`(${l.resolution})`);
     if (l.bitrate)    parts.push(`${l.bitrate}Kbps`);
@@ -270,22 +257,22 @@ function buildStvSelector(links) {
 
     function parseQ(q) {
         if (!q) return 0;
-        const n = parseInt(String(q).replace(/p$/i,''));
+        const n = parseInt(String(q).replace(/p$/i, ''));
         if (!isNaN(n)) return n;
         return ({'4k':2160,'uhd':2160,'full hd':1080,'hd':720,'sd':480,'ld':360})[String(q).toLowerCase()] || 0;
     }
 
     const videos = links.filter(l => l.type !== 'mp3' && l.type !== 'audio')
-                        .sort((a,b) => parseQ(b.quality) - parseQ(a.quality));
+                        .sort((a, b) => parseQ(b.quality) - parseQ(a.quality));
     const audios = links.filter(l => l.type === 'mp3'  || l.type === 'audio');
 
-    videos.forEach((l,i) => {
+    videos.forEach((l, i) => {
         const o = document.createElement('option');
         o.value = `stv_video_${i}`; o.text = stvQualityLabel(l);
         if (i === 0) o.selected = true;
         sel.appendChild(o);
     });
-    audios.forEach((l,i) => {
+    audios.forEach((l, i) => {
         const o = document.createElement('option');
         o.value = `stv_audio_${i}`; o.text = stvQualityLabel(l);
         sel.appendChild(o);
@@ -298,11 +285,11 @@ function buildStvSelector(links) {
 }
 
 // ══════════════════════════════════════════════
-// SHOW — download card (URL mode)
+// DOWNLOAD CARD — show helpers
 // ══════════════════════════════════════════════
 
 function showYtResult(ytId, title, thumbnail, uploader, duration, sourceUrl) {
-    dlMode    = 'dlmp3';
+    dlMode     = 'dlmp3';
     activeYtId = ytId;
     stvTitle   = title;
     window.currentDownloadUrl = sourceUrl;
@@ -321,8 +308,8 @@ function showYtResult(ytId, title, thumbnail, uploader, duration, sourceUrl) {
     const sel = document.getElementById('formatSelect');
     if (sel) {
         sel.innerHTML =
-            dlmp3Links.map((l,i) =>
-                `<option value="dlmp3_video_${i}">📼 MP4 — ${l.quality}p${l.size ? ' — '+l.size : ''}</option>`
+            dlmp3Links.map((l, i) =>
+                `<option value="dlmp3_video_${i}">📼 MP4 — ${l.quality}p${l.size ? ' — ' + l.size : ''}</option>`
             ).join('') +
             `<option value="dlmp3_audio">🎵 MP3 — Direct audio</option>`;
     }
@@ -359,6 +346,108 @@ function showStvResult(data, sourceUrl) {
 }
 
 // ══════════════════════════════════════════════
+// QUALITY PICKER POPUP  (for MP4 in search results)
+// A small dropdown that appears near the MP4 button
+// ══════════════════════════════════════════════
+
+let pickerTarget = null;  // the button that opened the picker
+
+function closeQualityPicker() {
+    const p = document.getElementById('qualityPicker');
+    if (p) p.remove();
+    pickerTarget = null;
+}
+
+async function openQualityPicker(btn, ytId, title, thumbnail) {
+    // If same button clicked again, close it
+    if (pickerTarget === btn) { closeQualityPicker(); return; }
+    closeQualityPicker();
+    pickerTarget = btn;
+
+    const picker = document.createElement('div');
+    picker.id = 'qualityPicker';
+    picker.style.cssText = `
+        position:absolute; z-index:200;
+        background:var(--card); border:1px solid var(--border);
+        border-radius:10px; padding:8px; min-width:220px;
+        box-shadow:0 8px 24px rgba(0,0,0,.15); font-size:12px;`;
+    picker.innerHTML = `<div style="padding:6px 8px;opacity:.6;font-weight:700;">Loading qualities…</div>`;
+
+    // Position below the button
+    btn.style.position = 'relative';
+    btn.parentNode.style.position = 'relative';
+    btn.insertAdjacentElement('afterend', picker);
+
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', function outsideClick(e) {
+            if (!picker.contains(e.target) && e.target !== btn) {
+                closeQualityPicker();
+                document.removeEventListener('click', outsideClick);
+            }
+        });
+    }, 100);
+
+    try {
+        const vids = await dlmp3_videos(ytId);
+        if (!vids.length) throw new Error('No qualities');
+        picker.innerHTML = vids.map((v, i) =>
+            `<div class="qp-opt" data-i="${i}" style="padding:7px 10px;cursor:pointer;border-radius:7px;
+             display:flex;justify-content:space-between;align-items:center;gap:12px;
+             transition:background .15s;">
+                <span>📼 ${v.quality}p</span>
+                <span style="opacity:.55;font-size:11px;">${v.size || ''}</span>
+             </div>`
+        ).join('') +
+        `<div style="border-top:1px solid var(--border);margin:5px 0;"></div>
+         <div class="qp-opt qp-mp3" style="padding:7px 10px;cursor:pointer;border-radius:7px;
+             display:flex;justify-content:space-between;align-items:center;
+             transition:background .15s;">
+             <span>🎵 MP3 Audio</span>
+         </div>`;
+
+        picker.querySelectorAll('.qp-opt').forEach(opt => {
+            opt.addEventListener('mouseenter', () => opt.style.background = 'var(--muted)');
+            opt.addEventListener('mouseleave', () => opt.style.background = '');
+        });
+
+        // Video quality clicks
+        picker.querySelectorAll('.qp-opt:not(.qp-mp3)').forEach(opt => {
+            opt.addEventListener('click', async () => {
+                const i    = parseInt(opt.dataset.i, 10);
+                const link = vids[i];
+                closeQualityPicker();
+                btn.textContent = `⏳ ${link.quality}p…`; btn.disabled = true;
+                dl(link.url, `${title}_${link.quality}p.${link.ftype}`);
+                addHistory(title, thumbnail, `https://www.youtube.com/watch?v=${ytId}`, 'dlmp3');
+                setTimeout(() => { btn.textContent = '📹 MP4 ▾'; btn.disabled = false; }, 6000);
+            });
+        });
+
+        // MP3 click
+        picker.querySelector('.qp-mp3')?.addEventListener('click', async () => {
+            closeQualityPicker();
+            btn.textContent = '⏳ MP3…'; btn.disabled = true;
+            try {
+                const mp3 = await dlmp3_audio(ytId);
+                dl(mp3.url, `${title}.mp3`);
+                addHistory(title, thumbnail, `https://www.youtube.com/watch?v=${ytId}`, 'dlmp3');
+            } catch (e) {
+                ytdlpDownload(`https://www.youtube.com/watch?v=${ytId}`, 'mp3');
+            }
+            setTimeout(() => { btn.textContent = '📹 MP4 ▾'; btn.disabled = false; }, 6000);
+        });
+
+    } catch (e) {
+        picker.innerHTML = `<div style="padding:8px 10px;color:#dc2626;">Failed — using server fallback</div>`;
+        setTimeout(() => {
+            closeQualityPicker();
+            ytdlpDownload(`https://www.youtube.com/watch?v=${ytId}`, '480');
+        }, 1200);
+    }
+}
+
+// ══════════════════════════════════════════════
 // MODE B — TEXT SEARCH → results list
 // ══════════════════════════════════════════════
 
@@ -366,42 +455,45 @@ async function runSearch(query) {
     setBtnLoading('Searching…');
     hideErr();
     hideAll();
+    closeQualityPicker();
+
+    // Show a friendly nudge if the server takes > 15s (Render free tier cold start)
+    const slowTimer = setTimeout(() => {
+        setBtnLoading('Still searching…');
+        showErr('⏳ Server is waking up — this can take up to 30s on first use. Please wait…');
+    }, 15000);
 
     let results = [];
 
-    // Try DL-MP3 search first
     try {
-        results = await dlmp3_search(query);
+        const controller = new AbortController();
+        const hardTimeout = setTimeout(() => controller.abort(), 45000);
+
+        const res  = await fetch(
+            `${BACKEND_URL}/api/search?q=${encodeURIComponent(query)}&limit=12`,
+            { signal: controller.signal }
+        );
+        clearTimeout(hardTimeout);
+        const data = await res.json();
+        if (data.results?.length) results = data.results;
+        else if (data.error) throw new Error(data.error);
     } catch (e) {
-        console.warn('[DL-MP3 search]', e.message);
+        clearTimeout(slowTimer);
+        const msg = e.name === 'AbortError'
+            ? 'Search timed out. The server may be sleeping — wait 30s and try again.'
+            : (e.message || 'Search failed. Try a different name or paste a direct URL.');
+        console.warn('[search]', e.message);
+        showErr(msg);
+        setBtnReady();
+        return;
     }
 
-    // If DL-MP3 search fails or returns nothing, fall back to yt-dlp gvsearch metadata
-    if (!results.length) {
-        try {
-            const res  = await fetch(`${BACKEND_URL}/api/info?url=${encodeURIComponent('ytsearch10:' + query)}`);
-            const data = await res.json();
-            // yt-dlp may return a playlist of entries
-            if (Array.isArray(data.entries)) {
-                results = data.entries.map(e => ({
-                    videoId   : e.id,
-                    title     : e.title,
-                    thumbnail : e.thumbnail,
-                    duration  : fmtSecs(e.duration),
-                    uploader  : e.uploader,
-                }));
-            } else if (data.videoId) {
-                results = [{ videoId: data.videoId, title: data.title, thumbnail: data.thumbnail, duration: data.duration }];
-            }
-        } catch (e2) {
-            console.warn('[ytsearch fallback]', e2.message);
-        }
-    }
-
+    clearTimeout(slowTimer);
     setBtnReady();
+    hideErr();  // clear the "waking up" message if results came back
 
     if (!results.length) {
-        showErr('No results found. Try a different name or paste a direct URL.');
+        showErr('No results found. Try different keywords or paste a direct URL.');
         return;
     }
 
@@ -417,12 +509,12 @@ function renderSearchResults(results, query) {
     label.textContent = `Results for "${query}"`;
     list.innerHTML = '';
 
-    results.slice(0, 12).forEach(item => {
-        const ytId    = item.videoId || item.id || '';
-        const title   = item.title   || 'Unknown';
+    results.forEach(item => {
+        const ytId    = item.id       || '';
+        const title   = item.title    || 'Unknown';
         const thumb   = item.thumbnail || '';
-        const dur     = item.duration   || '';
-        const channel = item.uploader || item.channel || item.channelTitle || '';
+        const dur     = item.duration  || '';
+        const channel = item.channel   || '';
 
         const row = document.createElement('div');
         row.className = 'result-item';
@@ -431,56 +523,41 @@ function renderSearchResults(results, query) {
                 ? `<img class="result-thumb" src="${thumb}" loading="lazy" onerror="this.style.display='none'">`
                 : `<div class="result-thumb-ph">🎵</div>`}
             <div class="result-info">
-                <div class="result-title" title="${title}">${title}</div>
+                <div class="result-title" title="${title.replace(/"/g,'&quot;')}">${title}</div>
                 <div class="result-meta">${[channel, dur].filter(Boolean).join('  ·  ')}</div>
             </div>
             <div class="result-actions">
-                <button class="btn-mp3">🎵 MP3</button>
-                <button class="btn-mp4">📹 MP4</button>
-                <button class="btn-play">▶ Play</button>
+                <button class="btn-mp3" title="Download MP3">🎵 MP3</button>
+                <button class="btn-mp4" title="Choose video quality">📹 MP4 ▾</button>
+                <button class="btn-play" title="Play in mini player">▶ Play</button>
             </div>`;
 
-        // ── MP3 Download ──
-        row.querySelector('.btn-mp3').addEventListener('click', async function() {
-            if (!ytId) return showErr('No YouTube ID for this result.');
-            this.textContent = '⏳…'; this.classList.add('btn-busy'); this.disabled = true;
+        // ── MP3 ──
+        row.querySelector('.btn-mp3').addEventListener('click', async function () {
+            if (!ytId) return showErr('No YouTube ID.');
+            this.textContent = '⏳…'; this.disabled = true;
             try {
                 const mp3 = await dlmp3_audio(ytId);
                 dl(mp3.url, `${title}.mp3`);
                 this.textContent = '✅ MP3!';
                 addHistory(title, thumb, `https://www.youtube.com/watch?v=${ytId}`, 'dlmp3');
             } catch (e) {
-                console.warn('[MP3]', e.message, '→ yt-dlp');
                 ytdlpDownload(`https://www.youtube.com/watch?v=${ytId}`, 'mp3');
-                this.textContent = '🚀 Via server';
+                this.textContent = '🚀 Server';
             }
             const btn = this;
-            setTimeout(() => { btn.textContent = '🎵 MP3'; btn.classList.remove('btn-busy'); btn.disabled = false; }, 6000);
+            setTimeout(() => { btn.textContent = '🎵 MP3'; btn.disabled = false; }, 6000);
         });
 
-        // ── MP4 Download ──
-        row.querySelector('.btn-mp4').addEventListener('click', async function() {
-            if (!ytId) return showErr('No YouTube ID for this result.');
-            this.textContent = '⏳…'; this.classList.add('btn-busy'); this.disabled = true;
-            try {
-                const vids = await dlmp3_videos(ytId);
-                if (!vids.length) throw new Error('No links');
-                const best = vids[0]; // highest quality
-                dl(best.url, `${title}_${best.quality}p.${best.ftype}`);
-                this.textContent = `✅ ${best.quality}p!`;
-                addHistory(title, thumb, `https://www.youtube.com/watch?v=${ytId}`, 'dlmp3');
-            } catch (e) {
-                console.warn('[MP4]', e.message, '→ yt-dlp');
-                ytdlpDownload(`https://www.youtube.com/watch?v=${ytId}`, '480');
-                this.textContent = '🚀 Via server';
-            }
-            const btn = this;
-            setTimeout(() => { btn.textContent = '📹 MP4'; btn.classList.remove('btn-busy'); btn.disabled = false; }, 6000);
+        // ── MP4 ▾ (quality picker) ──
+        row.querySelector('.btn-mp4').addEventListener('click', function () {
+            if (!ytId) return showErr('No YouTube ID.');
+            openQualityPicker(this, ytId, title, thumb);
         });
 
         // ── Play ──
-        row.querySelector('.btn-play').addEventListener('click', function() {
-            if (!ytId) return showErr('No YouTube ID for this result.');
+        row.querySelector('.btn-play').addEventListener('click', function () {
+            if (!ytId) return showErr('No YouTube ID.');
             openMiniPlayer(ytId, title);
         });
 
@@ -488,10 +565,11 @@ function renderSearchResults(results, query) {
     });
 
     showSearchResults();
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ══════════════════════════════════════════════
-// MINI PLAYER  (floating, for Play button)
+// MINI PLAYER
 // ══════════════════════════════════════════════
 
 function openMiniPlayer(ytId, title) {
@@ -501,17 +579,14 @@ function openMiniPlayer(ytId, title) {
     if (!mp || !inner) return;
 
     ttl.textContent = title || 'Now Playing';
-
     if (typeof csPlayer !== 'undefined') {
         inner.innerHTML = '';
         window.miniCsPlayer = new csPlayer('#miniPlayerInner', { id: ytId, theme: 'default', autoplay: true });
     } else {
-        inner.innerHTML = `
-            <iframe src="https://www.youtube.com/embed/${ytId}?autoplay=1"
-                    width="100%" height="100%" frameborder="0" allowfullscreen
-                    allow="autoplay; fullscreen"></iframe>`;
+        inner.innerHTML = `<iframe src="https://www.youtube.com/embed/${ytId}?autoplay=1"
+            width="100%" height="100%" frameborder="0" allowfullscreen
+            allow="autoplay; fullscreen"></iframe>`;
     }
-
     mp.style.display = 'block';
     mp.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
@@ -525,15 +600,16 @@ function closeMiniPlayer() {
 }
 
 // ══════════════════════════════════════════════
-// MAIN FETCH — routes URL vs text
+// MAIN FETCH — routes URL vs text search
 // ══════════════════════════════════════════════
 
 async function fetchVideo() {
     const raw = document.getElementById('videoUrl')?.value?.trim();
-    if (!raw) { showErr('Please enter a URL or search term!'); return; }
+    if (!raw) { showErr('Enter a URL or search term!'); return; }
 
     hideErr();
     closeMiniPlayer();
+    closeQualityPicker();
 
     // ── TEXT SEARCH ───────────────────────────
     if (!isUrl(raw) && !/^[A-Za-z0-9_-]{11}$/.test(raw)) {
@@ -547,7 +623,6 @@ async function fetchVideo() {
     dlMode = null; activeYtId = null; stvLinks = []; dlmp3Links = [];
 
     try {
-        // Expand 11-char YT ID shorthand
         let url = raw;
         if (/^[A-Za-z0-9_-]{11}$/.test(raw) && !raw.includes('.')) {
             url = `https://www.youtube.com/watch?v=${raw}`;
@@ -567,7 +642,7 @@ async function fetchVideo() {
                 const vLinks = vRes.status === 'fulfilled' ? vRes.value : [];
                 if (!vLinks.length) throw new Error('No links from DL-MP3');
                 dlmp3Links = vLinks;
-                const meta     = metaRes.status === 'fulfilled' ? metaRes.value : {};
+                const meta = metaRes.status === 'fulfilled' ? metaRes.value : {};
                 showYtResult(ytId, meta.title || `YouTube — ${ytId}`, meta.thumbnail || '', meta.uploader || '', meta.duration || '', url);
             } catch (e) {
                 console.warn('[DL-MP3]', e.message, '→ STV');
@@ -580,7 +655,7 @@ async function fetchVideo() {
             }
 
         } else {
-            // Non-YouTube URL → engine ②
+            // Non-YouTube URL → engine ② (STV handles Dailymotion, FB, TikTok, Vimeo, adult sites via our server fallback)
             setBtnLoading('Analyzing…');
             try {
                 const data = await stv_fetch(url, msg => setBtnLoading(msg));
@@ -603,7 +678,7 @@ async function fetchVideo() {
 }
 
 // ══════════════════════════════════════════════
-// DOWNLOAD — for download card
+// DOWNLOAD — download card
 // ══════════════════════════════════════════════
 
 async function triggerDownload() {
@@ -611,20 +686,20 @@ async function triggerDownload() {
     const format = sel?.value || '0';
     hideErr();
 
-    // Engine ① — YouTube DL-MP3
+    // Engine ①
     if (dlMode === 'dlmp3' && activeYtId) {
         setDlBtn('⏳ Getting link…', true);
         try {
             if (format === 'dlmp3_audio') {
                 const mp3 = await dlmp3_audio(activeYtId);
                 dl(mp3.url, `${stvTitle || 'OmniFetch'}.mp3`);
-                setDlBtn(`✅ MP3 — ${mp3.bitrate}kbps${mp3.size ? ' · '+mp3.size : ''}`);
+                setDlBtn(`✅ MP3 — ${mp3.bitrate}kbps${mp3.size ? ' · ' + mp3.size : ''}`);
             } else if (format.startsWith('dlmp3_video_')) {
-                const i    = parseInt(format.replace('dlmp3_video_',''), 10);
+                const i    = parseInt(format.replace('dlmp3_video_', ''), 10);
                 const link = dlmp3Links[i] || dlmp3Links[0];
                 if (!link) throw new Error('Quality unavailable');
                 dl(link.url, `${stvTitle || 'OmniFetch'}_${link.quality}p.${link.ftype}`);
-                setDlBtn(`✅ ${link.quality}p${link.size ? ' · '+link.size : ''} — Downloading!`);
+                setDlBtn(`✅ ${link.quality}p${link.size ? ' · ' + link.size : ''} — Downloading!`);
             } else throw new Error('Unknown format');
         } catch (e) {
             console.warn('[DL-MP3 dl]', e.message, '→ yt-dlp');
@@ -634,25 +709,23 @@ async function triggerDownload() {
         return;
     }
 
-    // Engine ② — SaveTheVideo
+    // Engine ②
     if (dlMode === 'stv' && stvLinks.length) {
         if (format === 'ytdlp_mp3') { ytdlpDownload(window.currentDownloadUrl, 'mp3'); return; }
         let link;
         if (format.startsWith('stv_video_')) {
-            link = stvLinks.filter(l => l.type !== 'mp3' && l.type !== 'audio')
-                           [parseInt(format.replace('stv_video_',''),10)];
+            link = stvLinks.filter(l => l.type !== 'mp3' && l.type !== 'audio')[parseInt(format.replace('stv_video_',''), 10)];
         } else if (format.startsWith('stv_audio_')) {
-            link = stvLinks.filter(l => l.type === 'mp3' || l.type === 'audio')
-                           [parseInt(format.replace('stv_audio_',''),10)];
+            link = stvLinks.filter(l => l.type === 'mp3' || l.type === 'audio')[parseInt(format.replace('stv_audio_',''), 10)];
         }
         if (!link?.url) return showErr('Link unavailable — try a different quality.');
-        dl(link.url, `${stvTitle || 'OmniFetch'}.${(link.type||'mp4').toLowerCase()}`);
+        dl(link.url, `${stvTitle || 'OmniFetch'}.${(link.type || 'mp4').toLowerCase()}`);
         setDlBtn(`✅ ${link.quality || 'Downloading'}…`);
         setTimeout(() => setDlBtn('⬇ Download Now'), 6000);
         return;
     }
 
-    // Engine ③ — yt-dlp
+    // Engine ③
     const isAudio = format === 'ytdlp_mp3' || format === 'mp3';
     ytdlpDownload(window.currentDownloadUrl, isAudio ? 'mp3' : format);
 }
@@ -679,7 +752,7 @@ async function ytdlpMeta(input) {
     for (let attempt = 0; attempt <= 1; attempt++) {
         try {
             if (attempt > 0) setBtnLoading('Retrying…');
-            const res  = await fetch(`${BACKEND_URL}/api/info?url=${encodeURIComponent(input)}`, { headers: { Accept: 'application/json' }});
+            const res  = await fetch(`${BACKEND_URL}/api/info?url=${encodeURIComponent(input)}`, { headers: { Accept: 'application/json' } });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Server error');
             window.currentDownloadUrl = data.url || input;
@@ -691,32 +764,33 @@ async function ytdlpMeta(input) {
                     const vLinks = await dlmp3_videos(ytId);
                     if (vLinks.length) {
                         dlmp3Links = vLinks; activeYtId = ytId;
-                        showYtResult(ytId, data.title||'Unknown', data.thumbnail||'', '', data.duration||'', data.url||input);
+                        showYtResult(ytId, data.title || 'Unknown', data.thumbnail || '', data.uploader || '', data.duration || '', data.url || input);
                         return;
                     }
                 } catch (_) {}
             }
 
             setDlTitle(data.title);
-            setDlMeta([data.source, data.duration]);
-            setChip(data.source || '');
+            setDlMeta([data.uploader, data.source, data.duration].filter(Boolean));
+            setChip(data.source || platformOf(data.url || input));
 
             if (data.videoId && typeof csPlayer !== 'undefined') {
-                setPreview(''); window.myPlayer = new csPlayer('#videoPreview', { id: data.videoId, theme:'default', autoplay:false });
+                setPreview(''); window.myPlayer = new csPlayer('#videoPreview', { id: data.videoId, theme: 'default', autoplay: false });
             } else if (data.thumbnail) {
                 setPreview(`<img src="${data.thumbnail}" alt="" onerror="this.style.display='none'">`);
             }
 
             const sel = document.getElementById('formatSelect');
             if (sel) sel.innerHTML = `
-                <option value="0">📹 MP4 — Best Quality</option>
-                <option value="720">📹 MP4 — 720p</option>
-                <option value="480">📹 MP4 — 480p</option>
+                <option value="1080">📼 MP4 — Full HD 1080p</option>
+                <option value="720">📼 MP4 — HD 720p</option>
+                <option value="480" selected>📼 MP4 — SD 480p</option>
+                <option value="360">📼 MP4 — SD 360p</option>
                 <option value="ytdlp_mp3">🎵 MP3 Audio</option>`;
 
             setDlBtn('⬇ Download Now');
             showDownloadCard();
-            addHistory(data.title||'Unknown', data.thumbnail||'', window.currentDownloadUrl, 'ytdlp');
+            addHistory(data.title || 'Unknown', data.thumbnail || '', window.currentDownloadUrl, 'ytdlp');
             return;
         } catch (e) {
             if (attempt >= 1) throw e;
@@ -765,16 +839,31 @@ function renderHistory() {
 }
 
 // ══════════════════════════════════════════════
+// CLEAR INPUT
+// ══════════════════════════════════════════════
+
+function clearInput() {
+    const inp = document.getElementById('videoUrl');
+    const btn = document.getElementById('clearBtn');
+    if (inp) { inp.value = ''; inp.focus(); }
+    if (btn) btn.style.display = 'none';
+    hideErr();
+    hideAll();
+    closeMiniPlayer();
+    closeQualityPicker();
+}
+
+// ══════════════════════════════════════════════
 // SHARE
 // ══════════════════════════════════════════════
 
 function shareSite() {
     const p = { title: 'OmniFetch', text: 'Download any video or music instantly', url: window.location.href };
-    if (navigator.share) { navigator.share(p).catch(()=>{}); return; }
+    if (navigator.share) { navigator.share(p).catch(() => {}); return; }
     navigator.clipboard.writeText(window.location.href)
         .then(() => {
             const b = document.querySelector('.share-btn');
-            if (b) { const o = b.textContent; b.textContent = '✅ Link copied!'; setTimeout(() => b.textContent = o, 2500); }
+            if (b) { const o = b.textContent; b.textContent = '✅ Copied!'; setTimeout(() => b.textContent = o, 2500); }
         })
         .catch(() => prompt('Copy this link:', window.location.href));
 }
@@ -788,6 +877,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('videoUrl')?.addEventListener('keypress', e => {
         if (e.key === 'Enter') fetchVideo();
+    });
+
+    // Show/hide the ✕ clear button as user types
+    document.getElementById('videoUrl')?.addEventListener('input', e => {
+        const btn = document.getElementById('clearBtn');
+        if (btn) btn.style.display = e.target.value.length ? 'block' : 'none';
     });
 
     const themeBtn = document.getElementById('themeToggle');

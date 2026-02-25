@@ -1,23 +1,5 @@
 // ============================================================
-// OMNIFETCH — kizito2.js  (v10 — Final)
-//
-// ✅ NO hardcoded API tokens or secrets in this file.
-//    All sensitive config (YOUTUBE_COOKIES) lives in
-//    Render → Environment Variables only.
-//
-// MODE A — URL PASTE  →  download card
-//   YouTube URL   →  ① DL-MP3 qualities + STV metadata
-//   Any other URL →  ② STV proxy quality list
-//   Any fallback  →  ③ yt-dlp server (supports adult sites,
-//                      Dailymotion, Vimeo, Twitter, TikTok, etc.)
-//   Total failure →  STV browser tab opened as last resort
-//
-// MODE B — TEXT SEARCH  →  MP3Juice-style results list
-//   /api/search on server runs ytsearch via yt-dlp (fast)
-//   Each result: [🎵 MP3] [📹 MP4 ▾ quality] [▶ Play]
-//   MP3  → dlmp3_audio(ytId)       → direct download
-//   MP4  → dlmp3_videos(ytId)      → quality picker popup → direct download
-//   Play → floating mini-player
+// OMNIFETCH — kizito2.js  (v11 — Final Clean)
 // ============================================================
 
 const BACKEND_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -27,10 +9,11 @@ const BACKEND_URL = (window.location.hostname === 'localhost' || window.location
 const DLMP3_BASE = 'https://api.download-lagu-mp3.com/@api/json';
 const STV_HOME   = 'https://www.savethevideo.com/home';
 
+// ── Global socket — single connection, used everywhere ──────
 const socket = io(BACKEND_URL);
 let socketId = '';
 
-// ── Download-card state ───────────────────────
+// ── Download-card state ──────────────────────────────────────
 let dlMode     = null;   // 'dlmp3' | 'stv' | 'ytdlp'
 let stvLinks   = [];
 let stvTitle   = '';
@@ -38,10 +21,18 @@ let activeYtId = null;
 let dlmp3Links = [];
 
 // ══════════════════════════════════════════════
-// SOCKET
+// SOCKET — single set of handlers, no duplicates
+// socketId is used by ytdlpDownload() to route
+// progress events back to this specific tab
 // ══════════════════════════════════════════════
-socket.on('connect',    () => { socketId = socket.id; setDot(true); });
-socket.on('disconnect', () => setDot(false));
+socket.on('connect', () => {
+    socketId = socket.id;
+    setDot(true);
+});
+socket.on('disconnect', () => {
+    socketId = '';
+    setDot(false);
+});
 setInterval(() => setDot(socket.connected), 5000);
 
 function setDot(on) {
@@ -57,8 +48,13 @@ socket.on('progress', ({ percent }) => {
     const bar  = document.getElementById('progressBar');
     const txt  = document.getElementById('progressText');
     if (wrap) wrap.style.display = 'block';
-    if (bar)  bar.style.width = Math.round(percent) + '%';
-    if (txt)  { txt.style.display = 'block'; txt.textContent = percent < 100 ? `Downloading ${Math.round(percent)}%…` : '✅ Done!'; }
+    if (bar)  bar.style.width    = Math.min(Math.round(percent), 100) + '%';
+    if (txt)  {
+        txt.style.display  = 'block';
+        txt.textContent    = percent < 100
+            ? `Downloading ${Math.round(percent)}%…`
+            : '✅ Done!';
+    }
     if (percent >= 100) {
         if (navigator.vibrate) navigator.vibrate(200);
         setTimeout(() => {
@@ -346,11 +342,10 @@ function showStvResult(data, sourceUrl) {
 }
 
 // ══════════════════════════════════════════════
-// QUALITY PICKER POPUP  (for MP4 in search results)
-// A small dropdown that appears near the MP4 button
+// QUALITY PICKER POPUP
 // ══════════════════════════════════════════════
 
-let pickerTarget = null;  // the button that opened the picker
+let pickerTarget = null;
 
 function closeQualityPicker() {
     const p = document.getElementById('qualityPicker');
@@ -359,7 +354,6 @@ function closeQualityPicker() {
 }
 
 async function openQualityPicker(btn, ytId, title, thumbnail) {
-    // If same button clicked again, close it
     if (pickerTarget === btn) { closeQualityPicker(); return; }
     closeQualityPicker();
     pickerTarget = btn;
@@ -373,12 +367,10 @@ async function openQualityPicker(btn, ytId, title, thumbnail) {
         box-shadow:0 8px 24px rgba(0,0,0,.15); font-size:12px;`;
     picker.innerHTML = `<div style="padding:6px 8px;opacity:.6;font-weight:700;">Loading qualities…</div>`;
 
-    // Position below the button
     btn.style.position = 'relative';
     btn.parentNode.style.position = 'relative';
     btn.insertAdjacentElement('afterend', picker);
 
-    // Close on outside click
     setTimeout(() => {
         document.addEventListener('click', function outsideClick(e) {
             if (!picker.contains(e.target) && e.target !== btn) {
@@ -411,7 +403,6 @@ async function openQualityPicker(btn, ytId, title, thumbnail) {
             opt.addEventListener('mouseleave', () => opt.style.background = '');
         });
 
-        // Video quality clicks
         picker.querySelectorAll('.qp-opt:not(.qp-mp3)').forEach(opt => {
             opt.addEventListener('click', async () => {
                 const i    = parseInt(opt.dataset.i, 10);
@@ -424,7 +415,6 @@ async function openQualityPicker(btn, ytId, title, thumbnail) {
             });
         });
 
-        // MP3 click
         picker.querySelector('.qp-mp3')?.addEventListener('click', async () => {
             closeQualityPicker();
             btn.textContent = '⏳ MP3…'; btn.disabled = true;
@@ -448,7 +438,7 @@ async function openQualityPicker(btn, ytId, title, thumbnail) {
 }
 
 // ══════════════════════════════════════════════
-// MODE B — TEXT SEARCH → results list
+// MODE B — TEXT SEARCH
 // ══════════════════════════════════════════════
 
 async function runSearch(query) {
@@ -457,7 +447,6 @@ async function runSearch(query) {
     hideAll();
     closeQualityPicker();
 
-    // Show a friendly nudge if the server takes > 15s (Render free tier cold start)
     const slowTimer = setTimeout(() => {
         setBtnLoading('Still searching…');
         showErr('⏳ Server is waking up — this can take up to 30s on first use. Please wait…');
@@ -466,9 +455,8 @@ async function runSearch(query) {
     let results = [];
 
     try {
-        const controller = new AbortController();
+        const controller  = new AbortController();
         const hardTimeout = setTimeout(() => controller.abort(), 45000);
-
         const res  = await fetch(
             `${BACKEND_URL}/api/search?q=${encodeURIComponent(query)}&limit=12`,
             { signal: controller.signal }
@@ -482,7 +470,6 @@ async function runSearch(query) {
         const msg = e.name === 'AbortError'
             ? 'Search timed out. The server may be sleeping — wait 30s and try again.'
             : (e.message || 'Search failed. Try a different name or paste a direct URL.');
-        console.warn('[search]', e.message);
         showErr(msg);
         setBtnReady();
         return;
@@ -490,7 +477,7 @@ async function runSearch(query) {
 
     clearTimeout(slowTimer);
     setBtnReady();
-    hideErr();  // clear the "waking up" message if results came back
+    hideErr();
 
     if (!results.length) {
         showErr('No results found. Try different keywords or paste a direct URL.');
@@ -532,7 +519,6 @@ function renderSearchResults(results, query) {
                 <button class="btn-play" title="Play in mini player">▶ Play</button>
             </div>`;
 
-        // ── MP3 ──
         row.querySelector('.btn-mp3').addEventListener('click', async function () {
             if (!ytId) return showErr('No YouTube ID.');
             this.textContent = '⏳…'; this.disabled = true;
@@ -549,13 +535,11 @@ function renderSearchResults(results, query) {
             setTimeout(() => { btn.textContent = '🎵 MP3'; btn.disabled = false; }, 6000);
         });
 
-        // ── MP4 ▾ (quality picker) ──
         row.querySelector('.btn-mp4').addEventListener('click', function () {
             if (!ytId) return showErr('No YouTube ID.');
             openQualityPicker(this, ytId, title, thumb);
         });
 
-        // ── Play ──
         row.querySelector('.btn-play').addEventListener('click', function () {
             if (!ytId) return showErr('No YouTube ID.');
             openMiniPlayer(ytId, title);
@@ -600,7 +584,7 @@ function closeMiniPlayer() {
 }
 
 // ══════════════════════════════════════════════
-// MAIN FETCH — routes URL vs text search
+// MAIN FETCH
 // ══════════════════════════════════════════════
 
 async function fetchVideo() {
@@ -611,13 +595,11 @@ async function fetchVideo() {
     closeMiniPlayer();
     closeQualityPicker();
 
-    // ── TEXT SEARCH ───────────────────────────
     if (!isUrl(raw) && !/^[A-Za-z0-9_-]{11}$/.test(raw)) {
         await runSearch(raw);
         return;
     }
 
-    // ── URL or 11-char YT ID ─────────────────
     setBtnLoading('Fetching…');
     hideAll();
     dlMode = null; activeYtId = null; stvLinks = []; dlmp3Links = [];
@@ -632,7 +614,6 @@ async function fetchVideo() {
         const ytId = getYtId(url);
 
         if (ytId) {
-            // YouTube → engine ①
             setBtnLoading('Loading…');
             try {
                 const [vRes, metaRes] = await Promise.allSettled([
@@ -653,9 +634,7 @@ async function fetchVideo() {
                     await ytdlpMeta(url);
                 }
             }
-
         } else {
-            // Non-YouTube URL → engine ② (STV handles Dailymotion, FB, TikTok, Vimeo, adult sites via our server fallback)
             setBtnLoading('Analyzing…');
             try {
                 const data = await stv_fetch(url, msg => setBtnLoading(msg));
@@ -678,7 +657,7 @@ async function fetchVideo() {
 }
 
 // ══════════════════════════════════════════════
-// DOWNLOAD — download card
+// DOWNLOAD — download card trigger
 // ══════════════════════════════════════════════
 
 async function triggerDownload() {
@@ -686,7 +665,6 @@ async function triggerDownload() {
     const format = sel?.value || '0';
     hideErr();
 
-    // Engine ①
     if (dlMode === 'dlmp3' && activeYtId) {
         setDlBtn('⏳ Getting link…', true);
         try {
@@ -709,7 +687,6 @@ async function triggerDownload() {
         return;
     }
 
-    // Engine ②
     if (dlMode === 'stv' && stvLinks.length) {
         if (format === 'ytdlp_mp3') { ytdlpDownload(window.currentDownloadUrl, 'mp3'); return; }
         let link;
@@ -725,7 +702,6 @@ async function triggerDownload() {
         return;
     }
 
-    // Engine ③
     const isAudio = format === 'ytdlp_mp3' || format === 'mp3';
     ytdlpDownload(window.currentDownloadUrl, isAudio ? 'mp3' : format);
 }
@@ -739,6 +715,7 @@ function dl(url, filename) {
 function ytdlpDownload(url, format) {
     if (!url) return showErr('No media loaded!');
     setDlBtn('🚀 Preparing via server…', true);
+    // Uses the global socketId set when socket connects at the top of this file
     dl(`${BACKEND_URL}/download?url=${encodeURIComponent(url)}&format=${encodeURIComponent(format)}&socketId=${encodeURIComponent(socketId)}`, '');
     setTimeout(() => setDlBtn('⬇ Download Now'), 6000);
 }
@@ -757,7 +734,6 @@ async function ytdlpMeta(input) {
             if (!res.ok) throw new Error(data.error || 'Server error');
             window.currentDownloadUrl = data.url || input;
 
-            // Upgrade to engine ① if YouTube
             const ytId = getYtId(data.url || input);
             if (ytId) {
                 try {
@@ -869,7 +845,9 @@ function shareSite() {
 }
 
 // ══════════════════════════════════════════════
-// INIT
+// INIT — DOMContentLoaded
+// Socket is already connected globally above.
+// This block only handles UI init (history, theme, input listeners).
 // ══════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -879,7 +857,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') fetchVideo();
     });
 
-    // Show/hide the ✕ clear button as user types
     document.getElementById('videoUrl')?.addEventListener('input', e => {
         const btn = document.getElementById('clearBtn');
         if (btn) btn.style.display = e.target.value.length ? 'block' : 'none';
@@ -895,50 +872,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.documentElement.setAttribute('data-theme', next);
             themeBtn.textContent = next === 'light' ? '🌙 Mode' : '☀️ Mode';
             localStorage.setItem('omni_theme', next);
-        });
-    }
-
-    // ── Socket.io — live download progress bar ──────────────
-    // Connects to the server and listens for progress events
-    // emitted by server.js → io.to(socketId).emit('progress', ...)
-    if (typeof io !== 'undefined') {
-        const socket = io();
-
-        socket.on('connect', () => {
-            // Store socket ID globally so triggerDownload() can pass it
-            // to /download?socketId=... and the server knows which tab to update
-            window._socketId = socket.id;
-            const dot = document.getElementById('statusDot');
-            if (dot) dot.style.background = 'var(--green)';
-        });
-
-        socket.on('disconnect', () => {
-            window._socketId = null;
-            const dot = document.getElementById('statusDot');
-            if (dot) dot.style.background = 'var(--red)';
-        });
-
-        socket.on('progress', ({ percent }) => {
-            const bar  = document.getElementById('progressBar');
-            const wrap = document.getElementById('progressWrapper');
-            const txt  = document.getElementById('progressText');
-            if (!bar || !wrap || !txt) return;
-
-            wrap.style.display = 'block';
-            txt.style.display  = 'block';
-            bar.style.width    = `${Math.min(percent, 100)}%`;
-            txt.textContent    = percent < 100
-                ? `Downloading… ${percent.toFixed(0)}%`
-                : '✅ Complete!';
-
-            // Hide the bar 2.5s after hitting 100%
-            if (percent >= 100) {
-                setTimeout(() => {
-                    wrap.style.display = 'none';
-                    txt.style.display  = 'none';
-                    bar.style.width    = '0%';
-                }, 2500);
-            }
         });
     }
 });

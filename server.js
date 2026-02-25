@@ -6,6 +6,9 @@ const http    = require('http');
 const { Server }      = require('socket.io');
 const { spawn, execSync } = require('child_process');
 
+// ── PATH fix for Render: pip installs to ~/.local/bin ──────
+process.env.PATH = `${process.env.HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`;
+
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
@@ -47,10 +50,27 @@ let oauthState = { active: false, userCode: null, verifyUrl: null, status: 'idle
     }
 })();
 
-// ── yt-dlp version check ────────────────────────────────
-const YTDLP_PATH = 'yt-dlp';
+// ── yt-dlp path resolution ──────────────────────────────
+// Check common locations so the plugin (oauth2) is always found
+const YTDLP_CANDIDATES = [
+    process.env.YTDLP_PATH,
+    `${process.env.HOME}/.local/bin/yt-dlp`,
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp',
+    'yt-dlp',
+].filter(Boolean);
+
+let YTDLP_PATH = 'yt-dlp';
+for (const candidate of YTDLP_CANDIDATES) {
+    try {
+        execSync(`"${candidate}" --version`, { timeout: 5000 });
+        YTDLP_PATH = candidate;
+        break;
+    } catch (_) { /* try next */ }
+}
+
 try {
-    console.log(`✅ yt-dlp ${execSync('yt-dlp --version', { timeout: 5000 }).toString().trim()}`);
+    console.log(`✅ yt-dlp ${execSync(`"${YTDLP_PATH}" --version`, { timeout: 5000 }).toString().trim()} (${YTDLP_PATH})`);
 } catch {
     console.error('❌ yt-dlp not found — check your build command in package.json');
 }
@@ -100,6 +120,8 @@ function parseStderrError(stderr) {
                                                             return 'Rate limited or login required. Re-link your YouTube account.';
     if (stderr.includes('is not a valid URL') || stderr.includes('Unsupported URL'))
                                                             return 'Invalid or unsupported URL.';
+    if (stderr.includes('oauth2') || stderr.includes('plugin'))
+                                                            return 'OAuth2 plugin not found. Ensure yt-dlp-youtube-oauth2 is installed.';
     return 'Extraction failed. The source may be private or geo-blocked.';
 }
 
@@ -159,7 +181,10 @@ app.post('/api/auth/start', (req, res) => {
     let responded = false;
 
     proc.stderr.on('data', chunk => {
-        stderrBuf += chunk.toString();
+        const text = chunk.toString();
+        stderrBuf += text;
+        console.log('[oauth2 stderr]', text.trim()); // ← helps diagnose issues in Render logs
+
         // Plugin prints: "open https://www.google.com/device and enter code XXXX-XXXX"
         const codeMatch = stderrBuf.match(/code[:\s]+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
         const urlMatch  = stderrBuf.match(/open\s+(https:\/\/[^\s\n]+)/i);
@@ -180,7 +205,7 @@ app.post('/api/auth/start', (req, res) => {
         } else {
             oauthState.status = 'error';
             oauthState.error  = 'OAuth2 flow failed. Is yt-dlp-youtube-oauth2 installed?';
-            console.error('[oauth2] failed:', stderrBuf.slice(0, 300));
+            console.error('[oauth2] failed stderr:', stderrBuf.slice(0, 600));
             if (!responded) res.status(500).json({ error: oauthState.error });
         }
     });
@@ -221,14 +246,13 @@ app.get('/api/search', (req, res) => {
         '--flat-playlist', '--dump-json', '--no-warnings',
         '--age-limit', '99',
         ...COMMON_FLAGS,
-        ...getPlatformHeaders('youtube.com'),   // ← FIX: was missing
+        ...getPlatformHeaders('youtube.com'),
         ...authFlags(),
     ];
 
     const ytdlp = spawn(YTDLP_PATH, args);
     let stdout = '', stderr = '';
 
-    // FIX: 30s timeout so hung processes don't block forever
     const timer = setTimeout(() => {
         ytdlp.kill('SIGTERM');
         if (!res.headersSent) res.status(504).json({ error: 'Search timed out. Try again.' });
@@ -286,7 +310,6 @@ app.get('/api/info', (req, res) => {
     const ytdlp = spawn(YTDLP_PATH, args);
     let stdout = '', stderr = '';
 
-    // FIX: 30s timeout
     const timer = setTimeout(() => {
         ytdlp.kill('SIGTERM');
         if (!res.headersSent) res.status(504).json({ error: 'Timed out. Paste a direct URL.' });
@@ -335,7 +358,6 @@ app.get('/download', (req, res) => {
     const isAudio = format === 'mp3' || format === 'ytdlp_mp3';
     const ext     = isAudio ? 'mp3' : 'mp4';
 
-    // FIX: quality selector restored
     let fmtArgs;
     if (isAudio) {
         fmtArgs = ['-x', '--audio-format', 'mp3', '--audio-quality', '0'];
@@ -371,7 +393,6 @@ app.get('/download', (req, res) => {
         if (!line.includes('%') && line.trim()) process.stderr.write('[yt-dlp] ' + line);
     });
 
-    // FIX: only set headers once real bytes arrive
     ytdlp.stdout.on('data', chunk => {
         if (!hasData) {
             hasData     = true;

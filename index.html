@@ -160,6 +160,122 @@
                      font-size:12px;font-weight:700;background:var(--card);color:var(--text);
                      border:1px solid var(--border);cursor:pointer;border-radius:8px;
                      box-shadow:0 2px 8px rgba(0,0,0,.08);}
+
+        /* ── Auth button (fixed top-left, mirrors themeToggle style) ── */
+        #authBtn {
+            position:fixed;top:14px;left:14px;z-index:999;
+            padding:7px 13px;font-size:12px;font-weight:700;
+            background:var(--card);color:var(--text);
+            border:1px solid var(--border);cursor:pointer;border-radius:8px;
+            box-shadow:0 2px 8px rgba(0,0,0,.08);
+            transition:all .2s;display:flex;align-items:center;gap:5px;
+        }
+        #authBtn:hover{background:var(--muted);border-color:var(--accent);}
+        #authBtn .auth-dot{
+            width:7px;height:7px;border-radius:50%;background:var(--red);
+            flex-shrink:0;transition:background .4s;
+        }
+        #authBtn.linked .auth-dot{background:var(--green);}
+        #authBtn.linked{color:var(--green);border-color:rgba(22,163,74,.35);}
+
+        /* ── Auth modal overlay ── */
+        #authModal{
+            display:none;position:fixed;inset:0;z-index:1100;
+            background:rgba(0,0,0,.55);backdrop-filter:blur(3px);
+            align-items:center;justify-content:center;
+        }
+        #authModal.open{display:flex;}
+
+        .auth-modal-box{
+            background:var(--card);color:var(--text);
+            border-radius:18px;box-shadow:0 12px 48px rgba(0,0,0,.35);
+            border:1px solid var(--border);
+            width:92%;max-width:420px;padding:28px 26px;
+            position:relative;animation:slideUp .22s ease;
+        }
+        @keyframes slideUp{from{transform:translateY(18px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+
+        .auth-modal-close{
+            position:absolute;top:14px;right:16px;
+            background:none;border:none;font-size:18px;
+            cursor:pointer;color:var(--sub);line-height:1;
+            padding:2px 6px;border-radius:5px;transition:background .15s;
+        }
+        .auth-modal-close:hover{background:var(--muted);}
+
+        .auth-modal-box h3{font-size:16px;font-weight:800;margin-bottom:4px;}
+        .auth-modal-subtitle{font-size:12px;color:var(--sub);margin-bottom:18px;line-height:1.5;}
+
+        /* Status pill */
+        .auth-status-pill{
+            display:flex;align-items:center;gap:8px;
+            background:var(--muted);border:1px solid var(--border);
+            border-radius:9px;padding:10px 13px;
+            font-size:12.5px;margin-bottom:16px;line-height:1.45;
+        }
+        .auth-status-pill .pill-dot{
+            width:8px;height:8px;border-radius:50%;flex-shrink:0;
+            background:var(--sub);transition:background .3s;
+        }
+        .auth-status-pill.linked   .pill-dot{background:var(--green);}
+        .auth-status-pill.pending  .pill-dot{background:#f59e0b;animation:blink 1.1s ease-in-out infinite;}
+        .auth-status-pill.error    .pill-dot{background:var(--red);}
+        @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+        /* Device-code steps */
+        #authSteps{display:none;margin-bottom:16px;}
+        .auth-step-row{
+            display:flex;align-items:flex-start;gap:10px;
+            font-size:12.5px;margin-bottom:10px;color:var(--text);line-height:1.45;
+        }
+        .auth-step-num{
+            background:var(--accent);color:#fff;border-radius:50%;
+            width:20px;height:20px;font-size:11px;font-weight:800;flex-shrink:0;
+            display:flex;align-items:center;justify-content:center;margin-top:1px;
+        }
+        .auth-code-block{
+            background:var(--muted);border:1px solid var(--border);
+            border-radius:10px;padding:12px 16px;
+            display:flex;align-items:center;justify-content:space-between;
+            margin:0 0 14px 30px;
+        }
+        #authUserCode{
+            font-family:monospace;font-size:1.5rem;
+            letter-spacing:.14em;font-weight:800;color:var(--accent);
+        }
+        .auth-copy-btn{
+            padding:5px 11px;border:none;border-radius:7px;
+            background:var(--accent);color:#fff;
+            font-size:11px;font-weight:700;cursor:pointer;
+            transition:opacity .15s;
+        }
+        .auth-copy-btn:hover{opacity:.85;}
+        .auth-waiting{
+            text-align:center;font-size:12px;color:var(--sub);
+            margin-bottom:14px;animation:blink 1.4s ease-in-out infinite;
+        }
+
+        /* Action buttons */
+        .auth-btn-row{display:flex;gap:9px;margin-bottom:14px;}
+        .auth-btn-primary{
+            flex:1;padding:11px;border:none;border-radius:10px;
+            background:var(--accent);color:#fff;
+            font-size:13px;font-weight:700;cursor:pointer;
+            transition:background .2s,transform .15s;
+        }
+        .auth-btn-primary:hover:not(:disabled){background:var(--accentH);transform:translateY(-1px);}
+        .auth-btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+        .auth-btn-danger{
+            flex:1;padding:11px;border:1.5px solid var(--red);border-radius:10px;
+            background:transparent;color:var(--red);
+            font-size:13px;font-weight:700;cursor:pointer;
+            transition:background .2s;
+        }
+        .auth-btn-danger:hover{background:rgba(220,38,38,.08);}
+
+        .auth-note{font-size:11px;color:var(--sub);line-height:1.55;text-align:center;}
+        .auth-note a{color:var(--accent);text-decoration:none;}
+
         @media(max-width:600px){
             .page{padding:14px 10px 70px;}
             .header-card{padding:18px 14px 16px;}
@@ -171,12 +287,70 @@
             .btn-mp3,.btn-mp4,.btn-play{width:100%;text-align:center;padding:8px;}
             .result-thumb,.result-thumb-ph{width:58px;height:40px;}
             #miniPlayer{bottom:10px;width:97%;}
+            #authBtn{top:auto;bottom:14px;left:14px;}
         }
     </style>
 </head>
 <body>
 
+<!-- Theme toggle (top-right) -->
 <button id="themeToggle">&#x1F319; Mode</button>
+
+<!-- Auth button (top-left) — dot turns green when linked -->
+<button id="authBtn" onclick="openAuthModal()" title="YouTube Account">
+    <span class="auth-dot"></span>
+    <span id="authBtnLabel">YT Auth</span>
+</button>
+
+<!-- ══ AUTH MODAL ══════════════════════════════════════ -->
+<div id="authModal" onclick="onAuthModalBg(event)">
+    <div class="auth-modal-box">
+        <button class="auth-modal-close" onclick="closeAuthModal()">&#x2715;</button>
+        <h3>&#x1F517; YouTube Account</h3>
+        <p class="auth-modal-subtitle">
+            Link once using a device code — no cookies needed.<br>
+            Your token stays valid for months automatically.
+        </p>
+
+        <!-- Status pill -->
+        <div class="auth-status-pill" id="authPill">
+            <span class="pill-dot"></span>
+            <span id="authPillText">Checking…</span>
+        </div>
+
+        <!-- Steps (shown only during pending) -->
+        <div id="authSteps">
+            <div class="auth-step-row">
+                <span class="auth-step-num">1</span>
+                <span>On any device, open <a id="authVerifyLink" href="https://www.google.com/device" target="_blank" rel="noopener"><strong id="authVerifyUrl">google.com/device</strong></a></span>
+            </div>
+            <div class="auth-code-block">
+                <span id="authUserCode">···· ····</span>
+                <button class="auth-copy-btn" onclick="copyAuthCode()">&#x1F4CB; Copy</button>
+            </div>
+            <div class="auth-step-row">
+                <span class="auth-step-num">2</span>
+                <span>Sign in with your Google account on that page.</span>
+            </div>
+            <div class="auth-step-row">
+                <span class="auth-step-num">3</span>
+                <span>Come back here — this panel updates automatically when approved.</span>
+            </div>
+            <p class="auth-waiting">&#x23F3; Waiting for approval…</p>
+        </div>
+
+        <!-- Buttons -->
+        <div class="auth-btn-row" id="authBtnRow">
+            <button class="auth-btn-primary" id="authLinkBtn" onclick="startOAuth()">&#x1F517; Link Account</button>
+            <button class="auth-btn-danger"  id="authRevokeBtn" onclick="revokeOAuth()" style="display:none">&#x1F5D1; Unlink</button>
+        </div>
+
+        <p class="auth-note">
+            🔒 Token stored only in server temp — never logged or shared.<br>
+            Need the plugin? <a href="https://github.com/coletdjnz/yt-dlp-youtube-oauth2" target="_blank" rel="noopener">yt-dlp-youtube-oauth2</a>
+        </p>
+    </div>
+</div>
 
 <noscript><div style="text-align:center;padding:60px 20px;"><h2>Please enable JavaScript.</h2></div></noscript>
 
@@ -284,5 +458,165 @@
     }
 </script>
 <script src="kizito2.js"></script>
+
+<!-- ══ AUTH MODAL JS ══════════════════════════════════ -->
+<script>
+(function() {
+    // ── State ──────────────────────────────────────────
+    let _pollTimer = null;
+
+    // ── Open / close ───────────────────────────────────
+    window.openAuthModal = function() {
+        document.getElementById('authModal').classList.add('open');
+        checkAuthStatus();
+    };
+    window.closeAuthModal = function() {
+        document.getElementById('authModal').classList.remove('open');
+    };
+    window.onAuthModalBg = function(e) {
+        if (e.target === document.getElementById('authModal')) closeAuthModal();
+    };
+
+    // ── Render state into UI ────────────────────────────
+    function applyStatus(data) {
+        const pill      = document.getElementById('authPill');
+        const pillTxt   = document.getElementById('authPillText');
+        const steps     = document.getElementById('authSteps');
+        const linkBtn   = document.getElementById('authLinkBtn');
+        const revokeBtn = document.getElementById('authRevokeBtn');
+        const authBtn   = document.getElementById('authBtn');
+        const authLabel = document.getElementById('authBtnLabel');
+
+        // Clear previous pill class
+        pill.className = 'auth-status-pill';
+
+        if (data.oauth2Linked) {
+            pill.classList.add('linked');
+            pillTxt.textContent = '✅ YouTube account linked — OAuth2 active. Downloads won\'t hit rate limits.';
+            steps.style.display  = 'none';
+            linkBtn.style.display   = 'none';
+            revokeBtn.style.display = '';
+            authBtn.classList.add('linked');
+            authLabel.textContent = 'YT Linked';
+            stopPolling();
+
+        } else if (data.oauthFlow === 'pending' && data.userCode) {
+            pill.classList.add('pending');
+            pillTxt.textContent = 'Waiting for you to approve on Google…';
+            steps.style.display  = '';
+            linkBtn.style.display   = 'none';
+            revokeBtn.style.display = 'none';
+            authBtn.classList.remove('linked');
+            authLabel.textContent = 'YT Auth';
+            // Show code + URL
+            document.getElementById('authUserCode').textContent = data.userCode;
+            const url = data.verifyUrl || 'https://www.google.com/device';
+            document.getElementById('authVerifyUrl').textContent = url.replace('https://','');
+            document.getElementById('authVerifyLink').href = url;
+            // Keep polling
+            startPolling();
+
+        } else if (data.oauthFlow === 'error') {
+            pill.classList.add('error');
+            pillTxt.textContent = '❌ ' + (data.error || 'OAuth2 error. Is the plugin installed?');
+            steps.style.display  = 'none';
+            linkBtn.style.display   = '';
+            linkBtn.disabled        = false;
+            revokeBtn.style.display = 'none';
+            authBtn.classList.remove('linked');
+            authLabel.textContent = 'YT Auth';
+            stopPolling();
+
+        } else {
+            // idle / not linked
+            const fallback = data.cookiesLoaded ? ' (cookies fallback active)' : '';
+            pillTxt.textContent = '🔓 Not linked' + fallback + '. Link to avoid rate-limits.';
+            steps.style.display  = 'none';
+            linkBtn.style.display   = '';
+            linkBtn.disabled        = false;
+            revokeBtn.style.display = 'none';
+            authBtn.classList.remove('linked');
+            authLabel.textContent = 'YT Auth';
+            stopPolling();
+        }
+    }
+
+    // ── Poll /api/auth/status ───────────────────────────
+    async function checkAuthStatus() {
+        try {
+            const r    = await fetch('/api/auth/status');
+            const data = await r.json();
+            applyStatus(data);
+        } catch {
+            document.getElementById('authPillText').textContent = '⚠️ Cannot reach server.';
+        }
+    }
+
+    function startPolling() {
+        if (_pollTimer) return;
+        _pollTimer = setInterval(checkAuthStatus, 4000);
+    }
+    function stopPolling() {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+    }
+
+    // ── Start OAuth flow ────────────────────────────────
+    window.startOAuth = async function() {
+        const btn = document.getElementById('authLinkBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Starting…';
+        document.getElementById('authPill').className = 'auth-status-pill pending';
+        document.getElementById('authPillText').textContent = 'Requesting device code…';
+        try {
+            const r    = await fetch('/api/auth/start', { method: 'POST' });
+            const data = await r.json();
+            if (!r.ok) {
+                applyStatus({ oauthFlow: 'error', error: data.error });
+                return;
+            }
+            applyStatus({ oauthFlow: 'pending', userCode: data.userCode, verifyUrl: data.verifyUrl });
+        } catch {
+            applyStatus({ oauthFlow: 'error', error: 'Network error — is the server running?' });
+        }
+    };
+
+    // ── Revoke token ────────────────────────────────────
+    window.revokeOAuth = async function() {
+        if (!confirm('Unlink your YouTube account? You can re-link any time.')) return;
+        try {
+            await fetch('/api/auth/revoke', { method: 'POST' });
+            checkAuthStatus();
+        } catch {
+            document.getElementById('authPillText').textContent = '❌ Failed to revoke.';
+        }
+    };
+
+    // ── Copy code ───────────────────────────────────────
+    window.copyAuthCode = function() {
+        const code = document.getElementById('authUserCode').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            const b = document.querySelector('.auth-copy-btn');
+            if (!b) return;
+            const orig = b.innerHTML;
+            b.innerHTML = '✅ Copied!';
+            setTimeout(() => { b.innerHTML = orig; }, 2000);
+        });
+    };
+
+    // ── Auto-check on load (updates button badge silently) ──
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/api/auth/status').then(r => r.json()).then(data => {
+            const authBtn   = document.getElementById('authBtn');
+            const authLabel = document.getElementById('authBtnLabel');
+            if (data.oauth2Linked) {
+                authBtn.classList.add('linked');
+                authLabel.textContent = 'YT Linked';
+            }
+        }).catch(function(){});
+    });
+})();
+</script>
+
 </body>
 </html>

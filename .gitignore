@@ -2,7 +2,8 @@
 node_modules/
 npm-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json is intentionally NOT ignored
+# It locks dependency versions so Render builds identically to your machine
 
 # ── Environment & Secrets ─────────────────────
 .env
@@ -12,6 +13,9 @@ package-lock.json
 # ── OmniFetch Specific ────────────────────────
 # Cookies file may contain authenticated session tokens — NEVER commit this
 cookies.txt
+
+# OAuth2 token file — contains your YouTube refresh token — NEVER commit this
+*.token
 
 # yt-dlp binary if ever downloaded locally
 yt-dlp

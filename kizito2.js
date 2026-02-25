@@ -897,4 +897,48 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('omni_theme', next);
         });
     }
+
+    // ── Socket.io — live download progress bar ──────────────
+    // Connects to the server and listens for progress events
+    // emitted by server.js → io.to(socketId).emit('progress', ...)
+    if (typeof io !== 'undefined') {
+        const socket = io();
+
+        socket.on('connect', () => {
+            // Store socket ID globally so triggerDownload() can pass it
+            // to /download?socketId=... and the server knows which tab to update
+            window._socketId = socket.id;
+            const dot = document.getElementById('statusDot');
+            if (dot) dot.style.background = 'var(--green)';
+        });
+
+        socket.on('disconnect', () => {
+            window._socketId = null;
+            const dot = document.getElementById('statusDot');
+            if (dot) dot.style.background = 'var(--red)';
+        });
+
+        socket.on('progress', ({ percent }) => {
+            const bar  = document.getElementById('progressBar');
+            const wrap = document.getElementById('progressWrapper');
+            const txt  = document.getElementById('progressText');
+            if (!bar || !wrap || !txt) return;
+
+            wrap.style.display = 'block';
+            txt.style.display  = 'block';
+            bar.style.width    = `${Math.min(percent, 100)}%`;
+            txt.textContent    = percent < 100
+                ? `Downloading… ${percent.toFixed(0)}%`
+                : '✅ Complete!';
+
+            // Hide the bar 2.5s after hitting 100%
+            if (percent >= 100) {
+                setTimeout(() => {
+                    wrap.style.display = 'none';
+                    txt.style.display  = 'none';
+                    bar.style.width    = '0%';
+                }, 2500);
+            }
+        });
+    }
 });

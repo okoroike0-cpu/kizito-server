@@ -29,8 +29,6 @@ let oauthState = { active: false, userCode: null, verifyUrl: null, status: 'idle
 
 // ══════════════════════════════════════════════════════════
 //  BOOTSTRAP — Restore cookies & OAuth2 token from env vars
-//  On Render: set YOUTUBE_COOKIES and/or OAUTH2_TOKEN
-//  in Dashboard → Environment. Both survive redeploys.
 // ══════════════════════════════════════════════════════════
 (function bootstrap() {
     if (process.env.YOUTUBE_COOKIES) {
@@ -51,7 +49,6 @@ let oauthState = { active: false, userCode: null, verifyUrl: null, status: 'idle
 })();
 
 // ── yt-dlp path resolution ──────────────────────────────
-// Check common locations so the plugin (oauth2) is always found
 const YTDLP_CANDIDATES = [
     process.env.YTDLP_PATH,
     `${process.env.HOME}/.local/bin/yt-dlp`,
@@ -83,14 +80,12 @@ const COMMON_FLAGS = [
     '--extractor-retries', '3', '--socket-timeout', '20',
 ];
 
-// Auth priority: OAuth2 token  >  cookies.txt  >  nothing
 function authFlags() {
     if (fs.existsSync(TOKEN_PATH))   return ['--username', 'oauth2', '--password', ''];
     if (fs.existsSync(COOKIES_PATH)) return ['--cookies', COOKIES_PATH];
     return [];
 }
 
-// Per-platform headers — correct Referer stops 403s on Dailymotion etc.
 function getPlatformHeaders(url) {
     const u  = (url || '').toLowerCase();
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -111,17 +106,14 @@ function getPlatformHeaders(url) {
     return h;
 }
 
-// Readable error messages from yt-dlp stderr
 function parseStderrError(stderr) {
-    if (stderr.includes('No video could be found'))         return 'This URL has no downloadable video (image-only tweet?).';
+    if (stderr.includes('No video could be found'))             return 'This URL has no downloadable video (image-only tweet?).';
     if (stderr.includes('403') || stderr.includes('Forbidden')) return 'Site blocked the request (403). Try a direct URL.';
-    if (stderr.includes('No video formats'))                return 'No downloadable formats found at this URL.';
+    if (stderr.includes('No video formats'))                    return 'No downloadable formats found at this URL.';
     if (stderr.includes('Sign in') || stderr.includes('bot') || stderr.includes('429'))
-                                                            return 'Rate limited or login required. Re-link your YouTube account.';
+                                                                return 'Rate limited or login required. Re-link your YouTube account.';
     if (stderr.includes('is not a valid URL') || stderr.includes('Unsupported URL'))
-                                                            return 'Invalid or unsupported URL.';
-    if (stderr.includes('oauth2') || stderr.includes('plugin'))
-                                                            return 'OAuth2 plugin not found. Ensure yt-dlp-youtube-oauth2 is installed.';
+                                                                return 'Invalid or unsupported URL.';
     return 'Extraction failed. The source may be private or geo-blocked.';
 }
 
@@ -135,7 +127,6 @@ function fmtSecs(s) {
 //  OAUTH2 ROUTES
 // ══════════════════════════════════════════════════════════
 
-// GET /api/auth/status
 app.get('/api/auth/status', (req, res) => {
     res.json({
         oauth2Linked:  fs.existsSync(TOKEN_PATH),
@@ -147,10 +138,57 @@ app.get('/api/auth/status', (req, res) => {
     });
 });
 
-// GET /api/auth/token-export
-// After linking, call this to get the token string → paste into
-// Render env var OAUTH2_TOKEN so it survives redeploys.
-// Protected by EXPORT_SECRET env var — set it in Render dashboard.
+// ══════════════════════════════════════════════════════════
+//  DEBUG — streams raw yt-dlp output to browser
+//  Visit: https://kizito-server.onrender.com/api/auth/debug
+//  Also wipes the stale token so you see the device-code flow
+// ══════════════════════════════════════════════════════════
+app.get('/api/auth/debug', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    res.write(`YTDLP_PATH   : ${YTDLP_PATH}\n`);
+    res.write(`TOKEN_PATH   : ${TOKEN_PATH}\n`);
+    res.write(`TOKEN exists : ${fs.existsSync(TOKEN_PATH)}\n`);
+    res.write(`COOKIES exists: ${fs.existsSync(COOKIES_PATH)}\n`);
+    res.write(`HOME: ${process.env.HOME}\n`);
+    res.write(`PATH: ${process.env.PATH}\n\n`);
+
+    if (fs.existsSync(TOKEN_PATH)) {
+        try {
+            fs.unlinkSync(TOKEN_PATH);
+            res.write('🗑️  Removed stale token file — starting fresh device-code flow\n\n');
+        } catch (e) {
+            res.write(`⚠️  Could not remove token: ${e.message}\n\n`);
+        }
+    }
+
+    res.write('--- Spawning yt-dlp oauth2 (--verbose) — waiting up to 30s ---\n\n');
+
+    const proc = spawn(YTDLP_PATH, [
+        '--username', 'oauth2', '--password', '',
+        '--skip-download', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        '--verbose',
+    ]);
+
+    proc.stdout.on('data', d => res.write('[stdout] ' + d.toString()));
+    proc.stderr.on('data', d => res.write('[stderr] ' + d.toString()));
+
+    let done = false;
+    const finish = (code) => {
+        if (done) return; done = true;
+        res.write(`\n\n--- yt-dlp exited: code ${code} ---\n`);
+        res.end();
+    };
+
+    proc.on('close', finish);
+    setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch (_) {}
+        res.write('\n[TIMED OUT after 30s]\n');
+        finish('timeout');
+    }, 30000);
+});
+
 app.get('/api/auth/token-export', (req, res) => {
     const secret = process.env.EXPORT_SECRET;
     if (secret && req.query.secret !== secret) {
@@ -172,6 +210,24 @@ app.post('/api/auth/start', (req, res) => {
     }
     oauthState = { active: true, status: 'pending', error: null, userCode: null, verifyUrl: null };
 
+    // ══════════════════════════════════════════════════════
+    //  THE KEY FIX:
+    //  Bootstrap writes the old OAUTH2_TOKEN env var to disk
+    //  on every boot. When /api/auth/start runs, yt-dlp finds
+    //  that file, tries to REFRESH the expired token, gets
+    //  HTTP 400, and exits — never printing the device code.
+    //  Solution: always delete the token file BEFORE spawning
+    //  so yt-dlp is forced to start a brand-new device-code flow.
+    // ══════════════════════════════════════════════════════
+    if (fs.existsSync(TOKEN_PATH)) {
+        try {
+            fs.unlinkSync(TOKEN_PATH);
+            console.log('[oauth2] 🗑️  Deleted stale token — starting fresh device-code flow');
+        } catch (e) {
+            console.warn('[oauth2] Could not delete stale token:', e.message);
+        }
+    }
+
     const proc = spawn(YTDLP_PATH, [
         '--username', 'oauth2', '--password', '',
         '--skip-download', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
@@ -183,7 +239,7 @@ app.post('/api/auth/start', (req, res) => {
     proc.stderr.on('data', chunk => {
         const text = chunk.toString();
         stderrBuf += text;
-        console.log('[oauth2 stderr]', text.trim()); // ← helps diagnose issues in Render logs
+        console.log('[oauth2 stderr]', text.trim());
 
         // Plugin prints: "open https://www.google.com/device and enter code XXXX-XXXX"
         const codeMatch = stderrBuf.match(/code[:\s]+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
@@ -210,7 +266,6 @@ app.post('/api/auth/start', (req, res) => {
         }
     });
 
-    // Safety timeout — kill after 5 minutes
     setTimeout(() => {
         try { proc.kill('SIGTERM'); } catch (_) {}
         if (!responded) {
@@ -220,7 +275,6 @@ app.post('/api/auth/start', (req, res) => {
     }, 5 * 60 * 1000);
 });
 
-// POST /api/auth/revoke
 app.post('/api/auth/revoke', (req, res) => {
     try {
         if (fs.existsSync(TOKEN_PATH)) fs.unlinkSync(TOKEN_PATH);
@@ -233,8 +287,7 @@ app.post('/api/auth/revoke', (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════
-//  SEARCH  — YouTube search via yt-dlp ytsearch
-//  FIX: added getPlatformHeaders + 30s kill timer
+//  SEARCH
 // ══════════════════════════════════════════════════════════
 app.get('/api/search', (req, res) => {
     const q     = req.query.q;
@@ -292,8 +345,7 @@ app.get('/api/search', (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════
-//  INFO  — single video metadata
-//  FIX: added 30s kill timer + detailed error messages
+//  INFO
 // ══════════════════════════════════════════════════════════
 app.get('/api/info', (req, res) => {
     const url = req.query.url;
@@ -347,9 +399,7 @@ app.get('/api/info', (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════
-//  DOWNLOAD  — stream via yt-dlp, no 0-byte files
-//  FIX: waits for first real data chunk before setting headers
-//  FIX: restored quality selector (1080/720/480/360/mp3)
+//  DOWNLOAD
 // ══════════════════════════════════════════════════════════
 app.get('/download', (req, res) => {
     const { url, format, socketId } = req.query;

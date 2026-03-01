@@ -25,22 +25,31 @@ RUN apt-get update && \
 #    └─ curl-cffi enables --impersonate chrome-124
 #       (spoofs TLS fingerprint so sites can't detect server IP as bot)
 #
-#  bgutil-yt-dlp-plugin
+#  bgutil-yt-dlp-plugin (installed from GitHub — removed from PyPI)
 #    └─ auto-generates YouTube PO tokens without needing cookies
 #       (kills the "Sign in to confirm you're not a bot" error)
 #
 RUN pip3 install -U \
         "yt-dlp[default,curl-cffi]" \
-        bgutil-yt-dlp-plugin \
         requests \
+        --break-system-packages && \
+    pip3 install -U \
+        "https://github.com/coletdjnz/yt-dlp-youtube-oauth2/archive/refs/heads/master.zip" \
         --break-system-packages && \
     yt-dlp --version && \
     echo "✅ yt-dlp + plugins installed"
 
-# ── Verify impersonate support ────────────────────────────────────────────────
+# ── Verify impersonate + OAuth2 plugin ───────────────────────────────────────
+# Check --impersonate flag exists (requires curl-cffi)
 RUN yt-dlp --help 2>&1 | grep -q "impersonate" && \
     echo "✅ --impersonate supported" || \
     echo "⚠️  --impersonate not available (curl-cffi may not have installed correctly)"
+
+# Check OAuth2 plugin is actually loaded by yt-dlp (not just pip-installed)
+# --list-plugins shows what yt-dlp actually sees at runtime
+RUN yt-dlp --list-plugins 2>&1 | grep -i "oauth2" && \
+    echo "✅ OAuth2 plugin active" || \
+    echo "⚠️  OAuth2 plugin not detected — YouTube bot detection may still trigger"
 
 # ── App ───────────────────────────────────────────────────────────────────────
 WORKDIR /app

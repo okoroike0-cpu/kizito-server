@@ -431,24 +431,29 @@ async function fetchTwitterOEmbed(tweetUrl) {
 }
 
 // ── Twitter CDN scraper — same approach used by ssstwitter.com ────────────────
-// Hits Twitter's public syndication embed endpoint which returns direct
-// video.twimg.com CDN URLs without requiring authentication.
-// Works for most public tweets that yt-dlp's API extractors can't reach.
 async function fetchTwitterCDN(tweetUrl) {
     return new Promise((resolve, reject) => {
-        // Extract tweet ID from URL
         const idMatch = tweetUrl.match(/\/status\/(\d+)/);
         if (!idMatch) { reject(new Error('No tweet ID in URL')); return; }
         const tweetId = idMatch[1];
 
+        // CDN requires a token — simple hash of tweet ID used by ssstwitter
+        const token = ((Number(tweetId) / 1e15) * Math.PI)
+            .toString(36).replace(/(\d+)\./, '$1');
+
+        const path = '/tweet-result?id=' + tweetId
+            + '&lang=en&token=' + token
+            + '&features=tfw_timeline_list%3A%3Btfw_follower_count_sunset%3Atrue';
+
         const options = {
             hostname: 'cdn.syndication.twimg.com',
-            path:     '/tweet-result?id=' + tweetId + '&lang=en&features=tfw_timeline_list%3A%3Btfw_follower_count_sunset%3Atrue',
-            headers:  {
-                'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept':      'application/json, text/javascript',
-                'Origin':      'https://platform.twitter.com',
-                'Referer':     'https://platform.twitter.com/',
+            path,
+            headers: {
+                'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept':          '*/*',
+                'Origin':          'https://platform.twitter.com',
+                'Referer':         'https://platform.twitter.com/',
+                'Accept-Language': 'en-US,en;q=0.9',
             },
         };
 
@@ -457,38 +462,51 @@ async function fetchTwitterCDN(tweetUrl) {
             res.on('data', d => data += d);
             res.on('end', () => {
                 try {
+                    console.log('[CDN] status:', res.statusCode, '| preview:', data.slice(0, 200));
+                    if (res.statusCode !== 200) { reject(new Error('CDN HTTP ' + res.statusCode)); return; }
+
                     const j = JSON.parse(data);
-                    // Navigate the response structure to find video variants
-                    const mediaEntities = j?.extended_entities?.media
-                        || j?.entities?.media
-                        || [];
+
+                    // Handle multiple response structures (Twitter changes this occasionally)
+                    const mediaList =
+                        j?.extended_entities?.media ||
+                        j?.entities?.media ||
+                        j?.mediaDetails ||
+                        (j?.video ? [j.video] : []);
 
                     let bestVideo = null;
                     let thumbnail = null;
 
-                    for (const media of mediaEntities) {
-                        if (media.type === 'video' || media.type === 'animated_gif') {
+                    for (const media of (mediaList || [])) {
+                        const mtype = media.type || '';
+                        if (mtype === 'video' || mtype === 'animated_gif') {
                             thumbnail = media.media_url_https || media.media_url || null;
-                            const variants = media?.video_info?.variants || [];
-                            // Filter to mp4 only and pick highest bitrate
+                            const variants = media?.video_info?.variants || media?.variants || [];
                             const mp4s = variants
-                                .filter(v => v.content_type === 'video/mp4' && v.url)
+                                .filter(v => (v.content_type === 'video/mp4' || v.type === 'video/mp4') && v.url)
                                 .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-                            if (mp4s.length > 0) {
-                                bestVideo = mp4s[0].url;
-                            }
+                            if (mp4s.length) bestVideo = mp4s[0].url;
                         }
                     }
 
-                    if (!bestVideo) { reject(new Error('No video in CDN response')); return; }
+                    // Last resort: regex scan for any video.twimg.com mp4 URL in raw JSON
+                    if (!bestVideo) {
+                        const m = data.match(/https:\/\/video\.twimg\.com\/[^"\\s]+\.mp4[^"\\s]*/);
+                        if (m) bestVideo = m[0];
+                    }
+
+                    if (!bestVideo) {
+                        console.log('[CDN] keys found:', Object.keys(j).join(', '));
+                        reject(new Error('No video in CDN response')); return;
+                    }
 
                     resolve({
                         videoUrl:  bestVideo,
                         thumbnail: thumbnail,
-                        author:    j?.user?.name || j?.core?.user_results?.result?.legacy?.name || null,
-                        title:     null, // CDN doesn't return tweet text reliably
+                        author:    j?.user?.name || null,
+                        title:     j?.text?.slice(0, 80) || null,
                     });
-                } catch (e) { reject(new Error('CDN parse error: ' + e.message)); }
+                } catch (e) { reject(new Error('CDN parse: ' + e.message)); }
             });
         });
         req.setTimeout(10000, () => { req.destroy(); reject(new Error('CDN timeout')); });

@@ -287,35 +287,35 @@ function extractTitleFromUrl(url) {
 
 
 // ── Thumbnail resolver — constructs thumbnail URLs for known platforms ─────────
-// Cobalt gives us no thumbnail. For common platforms we can build the URL
-// directly from the video ID / page URL without an extra network request.
+// Cobalt gives us no thumbnail. We construct URLs from known CDN patterns.
+// For hotlink-protected thumbnails, the frontend uses /api/thumb?url= proxy.
 function resolveThumbnail(url, cobaltFilename) {
     try {
         const u = new URL(url);
         const h = u.hostname.replace(/^www\./, '');
 
-        // YouTube: standard thumbnail CDN
+        // YouTube — direct CDN, always works
         if (h === 'youtube.com' || h === 'youtu.be') {
             const videoId = u.searchParams.get('v')
                 || u.pathname.split('/').find(p => p.length === 11 && /^[A-Za-z0-9_-]+$/.test(p));
             if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
         }
 
-        // TikTok: no public thumbnail CDN without auth — return null
-        if (h.includes('tiktok.com')) return null;
-
-        // Instagram: no public thumbnail CDN without auth — return null
-        if (h === 'instagram.com') return null;
-
-        // Vimeo: thumbnail API (no auth needed for public videos)
+        // Vimeo — vumbnail.com is a public proxy for Vimeo thumbnails
         if (h === 'vimeo.com') {
             const vimeoId = u.pathname.split('/').filter(Boolean)[0];
             if (vimeoId && /^\d+$/.test(vimeoId))
                 return `https://vumbnail.com/${vimeoId}.jpg`;
         }
 
-        // Reddit: no reliable public thumbnail CDN
-        if (h === 'reddit.com' || h === 'v.redd.it') return null;
+        // Dailymotion — public thumbnail CDN
+        if (h === 'dailymotion.com' || h === 'dai.ly') {
+            const dmId = u.pathname.split('/').pop()?.split('_')[0];
+            if (dmId) return `https://www.dailymotion.com/thumbnail/video/${dmId}`;
+        }
+
+        // TikTok, Instagram, Facebook, Reddit — no public CDN, yt-dlp provides thumbnail
+        // Those come through info.thumbnail from yt-dlp directly
 
     } catch (_) {}
     return null;
@@ -618,6 +618,61 @@ app.get('/api/auth/twitter-status', (req, res) => {
     res.json({ cookiesLoaded: loaded, domain });
 });
 
+
+// ── Wrap a thumbnail URL through our proxy if it's from a protected CDN ───────
+function wrapThumb(thumbUrl) {
+    if (!thumbUrl) return null;
+    const protectedDomains = [
+        'pbs.twimg.com', 'p16-sign', 'p19-sign', 'tiktokcdn',
+        'cdninstagram', 'scontent.',
+    ];
+    const needsProxy = protectedDomains.some(d => thumbUrl.includes(d));
+    return needsProxy ? '/api/thumb?url=' + encodeURIComponent(thumbUrl) : thumbUrl;
+}
+
+// ── Thumbnail proxy — serves hotlink-protected thumbnails to the browser ──────
+// TikTok, Twitter, and some other CDNs block direct browser requests because
+// the Referer header doesn't match. Proxying through our server fixes this.
+app.get('/api/thumb', async (req, res) => {
+    const thumbUrl = req.query.url;
+    if (!thumbUrl || !thumbUrl.startsWith('http')) {
+        return res.status(400).send('Invalid URL');
+    }
+    // Only allow known thumbnail CDN domains for security
+    const allowed = [
+        'pbs.twimg.com', 'video.twimg.com',
+        'p16-sign.tiktokcdn.com', 'p19-sign.tiktokcdn.com',
+        'p16-sign-va.tiktokcdn.com', 'p77-sign.tiktokcdn.com',
+        'cdninstagram.com', 'scontent.cdninstagram.com',
+        'img.youtube.com', 'i.ytimg.com',
+        'vumbnail.com', 'i.vimeocdn.com',
+        'www.dailymotion.com', 'dailymotion.com',
+        'external-preview.redd.it', 'preview.redd.it',
+        'i.redd.it',
+    ];
+    let hostname;
+    try { hostname = new URL(thumbUrl).hostname; } catch { return res.status(400).send('Bad URL'); }
+    if (!allowed.some(d => hostname === d || hostname.endsWith('.' + d))) {
+        return res.status(403).send('Domain not allowed');
+    }
+
+    const mod = thumbUrl.startsWith('https') ? https : http;
+    const proxyReq = mod.get(thumbUrl, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer':    'https://www.google.com/',
+            'Accept':     'image/webp,image/apng,image/*,*/*;q=0.8',
+        }
+    }, (proxyRes) => {
+        // Cache thumbnails for 1 hour in browser
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Content-Type', proxyRes.headers['content-type'] || 'image/jpeg');
+        proxyRes.pipe(res);
+    });
+    proxyReq.on('error', () => res.status(502).send('Thumbnail fetch failed'));
+    proxyReq.setTimeout(8000, () => { proxyReq.destroy(); res.status(504).send('Timeout'); });
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  INFO ENDPOINT — multi-strategy
 // ══════════════════════════════════════════════════════════════════════════════
@@ -642,7 +697,7 @@ app.get('/api/info', async (req, res) => {
                 return res.json({
                     success:    true,
                     title:      cobalt.filename?.replace(/\.[^.]+$/, '') || extractTitleFromUrl(url),
-                    thumbnail:  resolveThumbnail(url, cobalt.filename),
+                    thumbnail: wrapThumb(resolveThumbnail(url, cobalt.filename)),
                     url,
                     duration:   null,
                     uploader:   null,
@@ -701,7 +756,7 @@ app.get('/api/info', async (req, res) => {
                     return res.json({
                         success:      true,
                         title:        info.title           || (twMeta && twMeta.title) || 'Unknown Title',
-                        thumbnail:    info.thumbnail       || (twMeta && twMeta.thumbnail) || null,
+                        thumbnail: wrapThumb(info.thumbnail || (twMeta && twMeta.thumbnail) || null),
                         videoId:      info.id              || null,
                         url:          info.webpage_url || info.url || url,
                         duration:     info.duration_string || fmtSecs(info.duration) || null,
@@ -728,7 +783,7 @@ app.get('/api/info', async (req, res) => {
                     return res.json({
                         success:   true,
                         title:     (twMeta && twMeta.title) || extractTitleFromUrl(url),
-                        thumbnail: cdn.thumbnail || (twMeta && twMeta.thumbnail) || null,
+                        thumbnail: wrapThumb(cdn.thumbnail || (twMeta && twMeta.thumbnail) || null),
                         url,
                         duration:  null,
                         uploader:  cdn.author || (twMeta && twMeta.author) || null,
@@ -750,7 +805,7 @@ app.get('/api/info', async (req, res) => {
                     return res.json({
                         success:   true,
                         title:     oembed.title,
-                        thumbnail: oembed.thumbnail || null,
+                        thumbnail: wrapThumb(oembed.thumbnail || null),
                         url,
                         duration:  null,
                         uploader:  oembed.author || null,

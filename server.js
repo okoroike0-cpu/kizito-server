@@ -2,12 +2,13 @@
  * OmniFetch — server.js  v3.0
  *
  * Download strategies per platform:
- *   YouTube   → Cobalt → yt-dlp (ios+mweb clients, impersonate chrome, OAuth2 cache)
- *   TikTok    → Cobalt → yt-dlp (impersonate chrome)
- *   Instagram → Cobalt → yt-dlp (impersonate chrome + IG headers)
- *   Twitter/X → yt-dlp ONLY (syndication API + impersonate chrome) — Cobalt skipped
- *   Facebook  → yt-dlp (impersonate chrome + FB headers) → HLS scraper
- *   Generic   → yt-dlp → HLS/MP4 scraper
+ *   YouTube     → Cobalt → yt-dlp (ios+mweb clients, impersonate chrome, OAuth2 cache)
+ *   TikTok      → Cobalt → yt-dlp (impersonate chrome)
+ *   Instagram   → Cobalt → yt-dlp (impersonate chrome + IG headers)
+ *   Twitter/X   → yt-dlp ONLY (syndication API + playlist-items:1 fix)
+ *   Facebook    → yt-dlp (impersonate chrome + FB headers) → HLS scraper
+ *   Dailymotion → yt-dlp ONLY (Cobalt caused corruption — yt-dlp progressive mp4)
+ *   Generic     → yt-dlp → HLS/MP4 scraper
  *
  * Anti-bot measures:
  *   - --impersonate chrome-124  (curl-cffi TLS fingerprint spoofing)
@@ -61,6 +62,7 @@ const COBALT_APIS = [
 
 // Platforms Cobalt handles well
 // NOTE: Twitter/X intentionally excluded — yt-dlp syndication API is more reliable
+// NOTE: Dailymotion intentionally excluded — yt-dlp produces cleaner non-corrupted output
 const COBALT_HOSTS = new Set([
     'youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com',
     'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'm.tiktok.com',
@@ -70,7 +72,6 @@ const COBALT_HOSTS = new Set([
     'twitch.tv', 'www.twitch.tv', 'clips.twitch.tv',
     'soundcloud.com', 'www.soundcloud.com',
     'bilibili.com', 'www.bilibili.com',
-    'dailymotion.com', 'www.dailymotion.com',
     'ok.ru', 'tumblr.com', 'pinterest.com',
 ]);
 
@@ -215,8 +216,11 @@ function getPlatformFlags(url) {
             '--user-agent', UA_CHROME,
             '--add-header', 'Referer:https://twitter.com/',
             '--add-header', 'Accept-Language:en-US,en;q=0.9',
-            // syndication API bypasses auth wall for public tweets
+            // syndication API bypasses the auth wall for public tweets
             '--extractor-args', 'twitter:api=syndication',
+            // Force only the first (correct) video — tweets with multiple
+            // media items return a playlist and yt-dlp can pick the wrong one
+            '--playlist-items', '1',
         );
     } else {
         flags.push(
@@ -699,37 +703,78 @@ function buildFormatArgs(format, ext, isAudio, isWebm) {
         return ['-x', '--audio-format', ext === 'mp3' ? 'mp3' : ext, '--audio-quality', '0'];
     }
     if (isWebm) {
-        return ['-f', 'bestvideo[ext=webm]+bestaudio[ext=webm]/best[ext=webm]/best', '--merge-output-format', 'webm'];
+        return [
+            '-f', 'bestvideo[ext=webm]+bestaudio[ext=webm]/best[ext=webm]/best',
+            '--merge-output-format', 'webm',
+        ];
     }
     const h = ['1080', '720', '480', '360', '240'].includes(format) ? format : '720';
     return [
-        '-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/best[height<=${h}]/best`,
+        // Format selection priority:
+        // 1. Best mp4 video + m4a audio at requested height (cleanest, no remux needed)
+        // 2. Best mp4 video + any audio at requested height
+        // 3. Any single best file at requested height (e.g. Dailymotion progressive mp4)
+        // 4. Absolute best available (last resort)
+        '-f', [
+            `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]`,
+            `bestvideo[height<=${h}][ext=mp4]+bestaudio`,
+            `best[height<=${h}][ext=mp4]`,
+            `best[height<=${h}]`,
+            'best',
+        ].join('/'),
         '--merge-output-format', 'mp4',
+        // Note: --recode-video intentionally omitted — it triggers full CPU re-encode
+        // on Render free tier which causes timeouts. The format string above already
+        // prioritizes native mp4+m4a so remuxing is rarely needed.
     ];
 }
 
 // ── ffmpeg: HLS stream or trim ────────────────────────────────────────────────
+// NOTE: We use re-encode (-c:v libx264) instead of stream copy (-vcodec copy)
+// because copy fails silently when source codec/container is incompatible
+// (causes the "file is corrupt / won't play" error on Dailymotion and some others)
 function streamViaFfmpeg(inputUrl, referer, ext, mime, isAudio, startSec, endSec, res, req, emit, tmpFileToDelete) {
-    const ffArgs = ['-y'];
+    const ffArgs = ['-y', '-loglevel', 'error'];
     if (referer) ffArgs.push('-headers', `Referer: ${referer}\r\nUser-Agent: Mozilla/5.0\r\n`);
+
+    // Input seeking — put -ss before -i for fast seek
     if (startSec !== null) ffArgs.push('-ss', String(startSec));
     ffArgs.push('-i', inputUrl);
+
+    // Duration limit
     if (endSec !== null) {
         const dur = endSec - (startSec || 0);
         if (dur > 0) ffArgs.push('-t', String(dur));
     }
 
     if (isAudio) {
-        if (ext === 'mp3') ffArgs.push('-acodec', 'libmp3lame', '-q:a', '2');
-        else if (ext === 'aac') ffArgs.push('-acodec', 'aac', '-b:a', '192k');
-        else if (ext === 'wav') ffArgs.push('-acodec', 'pcm_s16le');
-        else ffArgs.push('-acodec', 'copy');
+        if (ext === 'mp3') ffArgs.push('-vn', '-acodec', 'libmp3lame', '-q:a', '2');
+        else if (ext === 'aac') ffArgs.push('-vn', '-acodec', 'aac', '-b:a', '192k');
+        else if (ext === 'wav') ffArgs.push('-vn', '-acodec', 'pcm_s16le');
+        else ffArgs.push('-vn', '-acodec', 'copy');
         ffArgs.push('-f', ext === 'mp3' ? 'mp3' : ext === 'wav' ? 'wav' : 'adts');
+    } else if (ext === 'webm') {
+        ffArgs.push('-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-c:a', 'libopus');
+        ffArgs.push('-f', 'webm');
     } else {
-        ffArgs.push('-vcodec', 'copy', '-acodec', 'copy');
-        ffArgs.push('-movflags', 'frag_keyframe+empty_moov');
-        ffArgs.push('-f', ext === 'webm' ? 'webm' : 'mp4');
+        // Re-encode to H.264/AAC — universally compatible with all players/devices
+        // ultrafast preset keeps CPU usage low on Render's free tier
+        ffArgs.push(
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-pix_fmt', 'yuv420p',           // Required for iPhone and some Android players
+            // frag_keyframe+empty_moov: correct for pipe:1 streaming.
+            // +faststart cannot work here — it requires seeking back on a real file
+            // to rewrite the moov atom, which is impossible on a pipe. It silently
+            // fails or corrupts output. Fragmented MP4 needs no seeking — each
+            // fragment is self-contained so browsers play from the first byte.
+            // Paired with libx264 re-encode (not stream copy) to prevent container
+            // mismatches that caused the original Dailymotion corruption.
+            '-movflags', 'frag_keyframe+empty_moov',
+            '-f', 'mp4',
+        );
     }
+
     ffArgs.push('pipe:1');
 
     const ff = spawn('ffmpeg', ffArgs);
@@ -740,6 +785,7 @@ function streamViaFfmpeg(inputUrl, referer, ext, mime, isAudio, startSec, endSec
             hasData = true;
             res.setHeader('Content-Disposition', `attachment; filename="OmniFetch_${Date.now()}.${ext}"`);
             res.setHeader('Content-Type', mime);
+            res.removeHeader('Content-Length'); // Size unknown during encoding
         }
         res.write(chunk);
     });
@@ -749,20 +795,27 @@ function streamViaFfmpeg(inputUrl, referer, ext, mime, isAudio, startSec, endSec
         if (tm) {
             const elapsed = parseInt(tm[1]) * 3600 + parseInt(tm[2]) * 60 + parseInt(tm[3]);
             const total   = endSec ? (endSec - (startSec || 0)) : 60;
-            emit(70 + Math.min(29, Math.round((elapsed / total) * 29)), 'Trimming…');
+            emit(70 + Math.min(29, Math.round((elapsed / total) * 29)), 'Processing…');
         }
+        // Log ffmpeg errors (not progress lines)
+        if (!line.includes('time=') && !line.includes('frame=') && line.trim())
+            process.stderr.write('[ffmpeg] ' + line);
     });
-    ff.on('close', () => {
+    ff.on('close', (code) => {
         emit(100, 'Done');
         if (tmpFileToDelete) try { fs.unlinkSync(tmpFileToDelete); } catch(_) {}
-        if (!hasData && !res.headersSent) res.status(500).json({ error: 'ffmpeg failed. Is ffmpeg installed?' });
+        if (!hasData && !res.headersSent) res.status(500).json({ error: 'ffmpeg failed — source may be inaccessible.' });
         else if (!res.writableEnded) res.end();
     });
     ff.on('error', () => {
         if (tmpFileToDelete) try { fs.unlinkSync(tmpFileToDelete); } catch(_) {}
         if (!res.headersSent) res.status(500).json({ error: 'ffmpeg not found on server.' });
     });
-    req.on('close', () => { try { ff.kill('SIGTERM'); } catch(_){} });
+    req.on('close', () => {
+        try { ff.kill('SIGTERM'); } catch(_){}
+        // SIGKILL fallback: ffmpeg sometimes ignores SIGTERM mid-encode on Render
+        setTimeout(() => { try { ff.kill('SIGKILL'); } catch(_){} }, 3000);
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -777,7 +830,7 @@ io.on('connection', s => {
 //  START
 // ══════════════════════════════════════════════════════════════════════════════
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`🚀 OmniFetch v3 on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`🚀 OmniFetch v3 on port ${PORT}`));
 
 process.on('uncaughtException',  err    => console.error('Uncaught:', err));
 process.on('unhandledRejection', reason => console.error('Unhandled rejection:', reason));

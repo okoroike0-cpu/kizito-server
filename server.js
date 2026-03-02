@@ -285,6 +285,42 @@ function extractTitleFromUrl(url) {
     } catch { return 'Video'; }
 }
 
+
+// ── Thumbnail resolver — constructs thumbnail URLs for known platforms ─────────
+// Cobalt gives us no thumbnail. For common platforms we can build the URL
+// directly from the video ID / page URL without an extra network request.
+function resolveThumbnail(url, cobaltFilename) {
+    try {
+        const u = new URL(url);
+        const h = u.hostname.replace(/^www\./, '');
+
+        // YouTube: standard thumbnail CDN
+        if (h === 'youtube.com' || h === 'youtu.be') {
+            const videoId = u.searchParams.get('v')
+                || u.pathname.split('/').find(p => p.length === 11 && /^[A-Za-z0-9_-]+$/.test(p));
+            if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+        }
+
+        // TikTok: no public thumbnail CDN without auth — return null
+        if (h.includes('tiktok.com')) return null;
+
+        // Instagram: no public thumbnail CDN without auth — return null
+        if (h === 'instagram.com') return null;
+
+        // Vimeo: thumbnail API (no auth needed for public videos)
+        if (h === 'vimeo.com') {
+            const vimeoId = u.pathname.split('/').filter(Boolean)[0];
+            if (vimeoId && /^\d+$/.test(vimeoId))
+                return `https://vumbnail.com/${vimeoId}.jpg`;
+        }
+
+        // Reddit: no reliable public thumbnail CDN
+        if (h === 'reddit.com' || h === 'v.redd.it') return null;
+
+    } catch (_) {}
+    return null;
+}
+
 // ── HTTP fetch helpers ────────────────────────────────────────────────────────
 function fetchJson(options, body, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
@@ -394,6 +430,72 @@ async function fetchTwitterOEmbed(tweetUrl) {
     });
 }
 
+// ── Twitter CDN scraper — same approach used by ssstwitter.com ────────────────
+// Hits Twitter's public syndication embed endpoint which returns direct
+// video.twimg.com CDN URLs without requiring authentication.
+// Works for most public tweets that yt-dlp's API extractors can't reach.
+async function fetchTwitterCDN(tweetUrl) {
+    return new Promise((resolve, reject) => {
+        // Extract tweet ID from URL
+        const idMatch = tweetUrl.match(/\/status\/(\d+)/);
+        if (!idMatch) { reject(new Error('No tweet ID in URL')); return; }
+        const tweetId = idMatch[1];
+
+        const options = {
+            hostname: 'cdn.syndication.twimg.com',
+            path:     '/tweet-result?id=' + tweetId + '&lang=en&features=tfw_timeline_list%3A%3Btfw_follower_count_sunset%3Atrue',
+            headers:  {
+                'User-Agent':  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept':      'application/json, text/javascript',
+                'Origin':      'https://platform.twitter.com',
+                'Referer':     'https://platform.twitter.com/',
+            },
+        };
+
+        const req = https.get(options, (res) => {
+            let data = '';
+            res.on('data', d => data += d);
+            res.on('end', () => {
+                try {
+                    const j = JSON.parse(data);
+                    // Navigate the response structure to find video variants
+                    const mediaEntities = j?.extended_entities?.media
+                        || j?.entities?.media
+                        || [];
+
+                    let bestVideo = null;
+                    let thumbnail = null;
+
+                    for (const media of mediaEntities) {
+                        if (media.type === 'video' || media.type === 'animated_gif') {
+                            thumbnail = media.media_url_https || media.media_url || null;
+                            const variants = media?.video_info?.variants || [];
+                            // Filter to mp4 only and pick highest bitrate
+                            const mp4s = variants
+                                .filter(v => v.content_type === 'video/mp4' && v.url)
+                                .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+                            if (mp4s.length > 0) {
+                                bestVideo = mp4s[0].url;
+                            }
+                        }
+                    }
+
+                    if (!bestVideo) { reject(new Error('No video in CDN response')); return; }
+
+                    resolve({
+                        videoUrl:  bestVideo,
+                        thumbnail: thumbnail,
+                        author:    j?.user?.name || j?.core?.user_results?.result?.legacy?.name || null,
+                        title:     null, // CDN doesn't return tweet text reliably
+                    });
+                } catch (e) { reject(new Error('CDN parse error: ' + e.message)); }
+            });
+        });
+        req.setTimeout(10000, () => { req.destroy(); reject(new Error('CDN timeout')); });
+        req.on('error', reject);
+    });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  COBALT API  (multi-instance fallback)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -480,6 +582,42 @@ app.get('/api/auth/debug', (req, res) => {
     setTimeout(() => { try { proc.kill(); } catch(_){} fin('timeout'); }, 30000);
 });
 
+
+// ── Twitter / X cookie upload ─────────────────────────────────────────────────
+// X's GraphQL API blocks unauthenticated requests for many tweets.
+// A logged-in cookies.txt from a real X account fixes this permanently.
+// Users export cookies using a browser extension (e.g. "Get cookies.txt LOCALLY")
+// then paste them here. Stored in the same COOKIES_PATH used by yt-dlp.
+app.post('/api/auth/twitter-cookies', (req, res) => {
+    const { cookies } = req.body;
+    if (!cookies || typeof cookies !== 'string' || cookies.trim().length < 10)
+        return res.status(400).json({ error: 'No cookies provided.' });
+    // Basic sanity check — should contain twitter.com or x.com domain entries
+    if (!cookies.includes('twitter.com') && !cookies.includes('x.com'))
+        return res.status(400).json({ error: 'These do not look like X/Twitter cookies. Make sure you exported from x.com or twitter.com.' });
+    try {
+        fs.writeFileSync(COOKIES_PATH, cookies.replace(/\\n/g, '\n'), 'utf8');
+        console.log('[auth] Twitter cookies saved, size:', cookies.length);
+        res.json({ ok: true, message: 'X/Twitter cookies saved. Downloads should now work for restricted tweets.' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/auth/twitter-status', (req, res) => {
+    const loaded = fs.existsSync(COOKIES_PATH);
+    let domain = null;
+    if (loaded) {
+        try {
+            const content = fs.readFileSync(COOKIES_PATH, 'utf8');
+            domain = content.includes('twitter.com') ? 'twitter.com'
+                   : content.includes('x.com')       ? 'x.com'
+                   : 'unknown';
+        } catch (_) {}
+    }
+    res.json({ cookiesLoaded: loaded, domain });
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  INFO ENDPOINT — multi-strategy
 // ══════════════════════════════════════════════════════════════════════════════
@@ -504,7 +642,7 @@ app.get('/api/info', async (req, res) => {
                 return res.json({
                     success:    true,
                     title:      cobalt.filename?.replace(/\.[^.]+$/, '') || extractTitleFromUrl(url),
-                    thumbnail:  null,
+                    thumbnail:  resolveThumbnail(url, cobalt.filename),
                     url,
                     duration:   null,
                     uploader:   null,
@@ -576,22 +714,48 @@ app.get('/api/info', async (req, res) => {
             } catch (_) {}
         }
 
-        // ── Strategy 3: Twitter oEmbed metadata fetch ────────────────────────
-        // When both graphql and syndication fail, try Twitter's public oEmbed API
-        // which returns title/thumbnail without needing auth
+        // ── Strategy 3: Twitter CDN direct scrape (ssstwitter method) ──────────
+        // cdn.syndication.twimg.com returns direct video.twimg.com CDN URLs
+        // for most public tweets without any authentication.
+        // This is the same endpoint that ssstwitter.com and similar services use.
         if (isTwitterUrl(url)) {
             try {
-                const oembed = await fetchTwitterOEmbed(url);
-                if (oembed) {
+                const cdn = await fetchTwitterCDN(url);
+                if (cdn && cdn.videoUrl) {
+                    // Also get oEmbed for title/author — it's already running in parallel
+                    const twMeta = twitterMetaPromise ? await twitterMetaPromise : null;
+                    console.log('[info] Twitter CDN success, direct video URL found');
                     return res.json({
                         success:   true,
-                        title:     oembed.title     || extractTitleFromUrl(url),
+                        title:     (twMeta && twMeta.title) || extractTitleFromUrl(url),
+                        thumbnail: cdn.thumbnail || (twMeta && twMeta.thumbnail) || null,
+                        url,
+                        duration:  null,
+                        uploader:  cdn.author || (twMeta && twMeta.author) || null,
+                        source:    'Twitter / X',
+                        strategy:  'scraper',
+                        scraped:   { url: cdn.videoUrl, type: 'mp4' },
+                    });
+                }
+            } catch (e) {
+                console.warn('[info] Twitter CDN failed:', e.message);
+            }
+
+            // ── Strategy 4: Twitter oEmbed metadata only ──────────────────────
+            // CDN failed — at least show title/author from oEmbed so the UI
+            // doesn't show 🎬 and "Unknown Title"
+            try {
+                const oembed = twitterMetaPromise ? await twitterMetaPromise : null;
+                if (oembed && oembed.title) {
+                    return res.json({
+                        success:   true,
+                        title:     oembed.title,
                         thumbnail: oembed.thumbnail || null,
                         url,
                         duration:  null,
-                        uploader:  oembed.author    || null,
+                        uploader:  oembed.author || null,
                         source:    'Twitter / X',
-                        strategy:  'ytdlp',  // still use yt-dlp for download
+                        strategy:  'ytdlp',
                         twitterOembed: true,
                     });
                 }

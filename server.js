@@ -380,7 +380,7 @@ async function fetchTwitterOEmbed(tweetUrl) {
                 try {
                     const j = JSON.parse(data);
                     // Try to extract a thumbnail from the embed HTML
-                    const thumbMatch = j.html && j.html.match(/src="(https://pbs.twimg.com/[^"]+)"/);
+                    const thumbMatch = j.html && j.html.match(new RegExp('src="(https://pbs\.twimg\.com/[^"]+)"'));
                     resolve({
                         title:     j.author_name ? '@' + j.author_name + "'s tweet" : null,
                         author:    j.author_name || null,

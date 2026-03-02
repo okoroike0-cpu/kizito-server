@@ -216,8 +216,9 @@ function getPlatformFlags(url) {
             '--user-agent', UA_CHROME,
             '--add-header', 'Referer:https://twitter.com/',
             '--add-header', 'Accept-Language:en-US,en;q=0.9',
-            // syndication API bypasses the auth wall for public tweets
-            '--extractor-args', 'twitter:api=syndication',
+            // graphql is the primary API — works for most tweets
+            // syndication is the fallback — works for some older/limited tweets
+            '--extractor-args', 'twitter:api=graphql,syndication',
             // Force only the first (correct) video — tweets with multiple
             // media items return a playlist and yt-dlp can pick the wrong one
             '--playlist-items', '1',
@@ -355,6 +356,44 @@ async function scrapeMediaUrl(pageUrl) {
     } catch { return null; }
 }
 
+
+// ── Twitter oEmbed — gets title + author when yt-dlp APIs fail ───────────────
+// Twitter's public oEmbed endpoint requires no auth and returns basic metadata.
+// It won't give us a direct video URL but at least the UI shows the right
+// title and author so the user confirms they have the right tweet before downloading.
+async function fetchTwitterOEmbed(tweetUrl) {
+    return new Promise((resolve, reject) => {
+        const encoded = encodeURIComponent(tweetUrl);
+        const apiPath = '/oembed?url=' + encoded + '&omit_script=true';
+        const options = {
+            hostname: 'publish.twitter.com',
+            path:     apiPath,
+            headers:  {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept':     'application/json',
+            },
+        };
+        const req = https.get(options, (res) => {
+            let data = '';
+            res.on('data', d => data += d);
+            res.on('end', () => {
+                try {
+                    const j = JSON.parse(data);
+                    // Try to extract a thumbnail from the embed HTML
+                    const thumbMatch = j.html && j.html.match(/src="(https://pbs.twimg.com/[^"]+)"/);
+                    resolve({
+                        title:     j.author_name ? '@' + j.author_name + "'s tweet" : null,
+                        author:    j.author_name || null,
+                        thumbnail: thumbMatch    ? thumbMatch[1] : null,
+                    });
+                } catch { reject(new Error('oEmbed parse failed')); }
+            });
+        });
+        req.setTimeout(8000, () => { req.destroy(); reject(new Error('oEmbed timeout')); });
+        req.on('error', reject);
+    });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  COBALT API  (multi-instance fallback)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -451,7 +490,12 @@ app.get('/api/info', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Invalid URL.' });
     }
 
-    // ── Strategy 1: Cobalt (fast, cookieless, handles YT/TT/IG/Twitter) ──────
+    // ── Strategy 1: Twitter-specific yt-dlp (graphql→syndication) ─────────────
+    // Twitter is NOT in COBALT_HOSTS, so this only runs for twitter.com / x.com
+    // We try yt-dlp first for Twitter because it returns proper metadata (title, thumb)
+    // Cobalt for Twitter was removed earlier as it returned wrong videos
+
+    // ── Strategy 2: Cobalt (fast, cookieless, handles YT/TT/IG) ─────────────────
     if (isCobaltUrl(url)) {
         try {
             const cobalt = await cobaltRequest(url);
@@ -475,6 +519,13 @@ app.get('/api/info', async (req, res) => {
     }
 
     // ── Strategy 2: yt-dlp with full anti-bot flags ───────────────────────────
+    // For Twitter: fire oEmbed in parallel so title/thumbnail appear fast (~1s)
+    // without waiting up to 35s for yt-dlp to finish or fail.
+    let twitterMetaPromise = null;
+    if (isTwitterUrl(url)) {
+        twitterMetaPromise = fetchTwitterOEmbed(url).catch(() => null);
+    }
+
     const ytdlpArgs = [
         url, '--dump-json',
         ...BASE_FLAGS,
@@ -506,15 +557,18 @@ app.get('/api/info', async (req, res) => {
                 const jsonLine = stdout.trim().split('\n').find(l => l.startsWith('{'));
                 if (jsonLine) {
                     const info = JSON.parse(jsonLine);
+                    // Supplement yt-dlp metadata with oEmbed for Twitter
+                    // (yt-dlp often returns no thumbnail for tweets)
+                    const twMeta = twitterMetaPromise ? await twitterMetaPromise : null;
                     return res.json({
                         success:      true,
-                        title:        info.title           || 'Unknown Title',
-                        thumbnail:    info.thumbnail       || null,
+                        title:        info.title           || (twMeta && twMeta.title) || 'Unknown Title',
+                        thumbnail:    info.thumbnail       || (twMeta && twMeta.thumbnail) || null,
                         videoId:      info.id              || null,
                         url:          info.webpage_url || info.url || url,
                         duration:     info.duration_string || fmtSecs(info.duration) || null,
                         durationSecs: info.duration        || null,
-                        uploader:     info.uploader        || info.channel || null,
+                        uploader:     info.uploader        || info.channel || (twMeta && twMeta.author) || null,
                         source:       info.extractor_key   || getHostname(url),
                         strategy:     'ytdlp',
                     });
@@ -522,7 +576,31 @@ app.get('/api/info', async (req, res) => {
             } catch (_) {}
         }
 
-        // ── Strategy 3: HLS/MP4 page scraper ─────────────────────────────────
+        // ── Strategy 3: Twitter oEmbed metadata fetch ────────────────────────
+        // When both graphql and syndication fail, try Twitter's public oEmbed API
+        // which returns title/thumbnail without needing auth
+        if (isTwitterUrl(url)) {
+            try {
+                const oembed = await fetchTwitterOEmbed(url);
+                if (oembed) {
+                    return res.json({
+                        success:   true,
+                        title:     oembed.title     || extractTitleFromUrl(url),
+                        thumbnail: oembed.thumbnail || null,
+                        url,
+                        duration:  null,
+                        uploader:  oembed.author    || null,
+                        source:    'Twitter / X',
+                        strategy:  'ytdlp',  // still use yt-dlp for download
+                        twitterOembed: true,
+                    });
+                }
+            } catch (e) {
+                console.warn('[info] Twitter oEmbed failed:', e.message);
+            }
+        }
+
+        // ── Strategy 4: HLS/MP4 page scraper ─────────────────────────────────
         console.log('[info] yt-dlp failed, trying page scraper for', url);
         const scraped = await scrapeMediaUrl(url);
         if (scraped) {
@@ -670,6 +748,26 @@ function downloadViaYtdlp(url, format, ext, mime, isAudio, isWebm, hasCut, start
         ytdlp.on('error', () => { if (!res.headersSent) res.status(500).send('yt-dlp launch failed'); });
         req.on('close', () => { ytdlp.kill('SIGTERM'); setTimeout(() => { try { ytdlp.kill('SIGKILL'); } catch(_){} }, 3000); });
         return;
+    }
+
+    // ── With cut: check file size before downloading to temp ──────────────────
+    // Render free tier has ~512MB RAM and limited /tmp disk.
+    // Reject trims on large files to prevent OOM/disk-full crashes.
+    const MAX_TRIM_BYTES = 500 * 1024 * 1024; // 500MB hard limit
+    try {
+        const sizeCheck = execSync(
+            `"${YTDLP_PATH}" "${url}" --print "%(filesize,filesize_approx)s" --no-playlist --socket-timeout 10`,
+            { timeout: 12000, stdio: 'pipe' }
+        ).toString().trim().split('\n')[0];
+        const fileBytes = parseInt(sizeCheck);
+        if (!isNaN(fileBytes) && fileBytes > MAX_TRIM_BYTES) {
+            const sizeMB = Math.round(fileBytes / 1024 / 1024);
+            return res.status(413).json({
+                error: `This video is ~${sizeMB}MB — too large to trim on this server. Download the full video instead.`
+            });
+        }
+    } catch (_) {
+        // Size check failed — proceed anyway, don't block the download
     }
 
     // ── With cut: download to temp file → ffmpeg ──────────────────────────────

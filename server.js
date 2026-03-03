@@ -26,6 +26,7 @@ const http           = require('http');
 const https          = require('https');
 const { Server }     = require('socket.io');
 const { spawn, execSync, spawnSync } = require('child_process');
+const { autoLoginTwitter, scheduleRefresh } = require('./twitter-login');
 
 // ── PATH fix (Render non-Docker) ──────────────────────────────────────────────
 if (!process.env.DOCKER) {
@@ -103,6 +104,23 @@ try {
 (function bootstrap() {
     // Ensure cache dir exists (for OAuth2 token persistence)
     try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch (_) {}
+
+    // Auto-login to Twitter/X using stored credentials (non-blocking)
+    // Runs in background so server starts immediately without waiting
+    if (process.env.TWITTER_EMAIL && process.env.TWITTER_PASSWORD) {
+        autoLoginTwitter()
+            .then(ok => {
+                if (ok) {
+                    console.log('[bootstrap] ✅ Twitter auto-login succeeded');
+                    scheduleRefresh(); // refresh every 12 hours
+                } else {
+                    console.warn('[bootstrap] ⚠️  Twitter auto-login failed — restricted tweets may not download');
+                }
+            })
+            .catch(e => console.error('[bootstrap] Twitter login error:', e.message));
+    } else {
+        console.log('[bootstrap] ℹ️  TWITTER_EMAIL/PASSWORD not set — skipping auto-login');
+    }
 
     // Restore cookies from env if provided (legacy support)
     if (process.env.YOUTUBE_COOKIES) {
@@ -241,6 +259,9 @@ const BASE_FLAGS = [
     '--socket-timeout', '20',
     '--no-playlist',
     '--age-limit', '99',
+    // Prevent falling back to the generic extractor — it wastes CPU and
+    // returns garbage results (raw page HTML as 'video') for Twitter and others
+    '--no-generic-extractor',
 ];
 
 // Proxy support — set PROXY_URL=http://user:pass@host:port in Render env vars
@@ -497,6 +518,10 @@ async function fetchTwitterCDN(tweetUrl) {
 
                     if (!bestVideo) {
                         console.log('[CDN] keys found:', Object.keys(j).join(', '));
+                        // TweetTombstone = tweet was deleted or made private by the author
+                        if (j?.__typename === 'TweetTombstone' || j?.tombstone) {
+                            reject(new Error('TOMBSTONE')); return;
+                        }
                         reject(new Error('No video in CDN response')); return;
                     }
 
@@ -737,6 +762,14 @@ app.get('/api/info', async (req, res) => {
         twitterMetaPromise = fetchTwitterOEmbed(url).catch(() => null);
     }
 
+    // Log whether cookies are loaded — important for Twitter/X restricted content
+    const cookiesActive = authFlags().length > 0;
+    if (isTwitterUrl(url) && !cookiesActive) {
+        console.log('[info] Twitter: no cookies loaded — restricted tweets will fail. Use /api/auth/twitter-cookies to upload.');
+    } else if (isTwitterUrl(url) && cookiesActive) {
+        console.log('[info] Twitter: cookies active ✅');
+    }
+
     const ytdlpArgs = [
         url, '--dump-json',
         ...BASE_FLAGS,
@@ -812,6 +845,13 @@ app.get('/api/info', async (req, res) => {
                 }
             } catch (e) {
                 console.warn('[info] Twitter CDN failed:', e.message);
+                // Tombstone = tweet deleted/restricted — no point trying further strategies
+                if (e.message === 'TOMBSTONE') {
+                    return res.status(410).json({
+                        success: false,
+                        error: 'This tweet has been deleted or restricted by the author. It cannot be downloaded.'
+                    });
+                }
             }
 
             // ── Strategy 4: Twitter oEmbed metadata only ──────────────────────
@@ -913,6 +953,19 @@ app.get('/download', async (req, res) => {
             if (scraped.type === 'hls' || hasCut) {
                 return streamViaFfmpeg(scraped.url, url, ext, mime, isAudio, startSec, endSec, res, req, emit);
             }
+            // Direct CDN redirect — browser downloads straight from source CDN.
+            // No proxying through our server, no re-encoding, no corruption.
+            // Exactly what ssstwitter does with video.twimg.com URLs.
+            const isCdnMp4 = scraped.url.includes('video.twimg.com')
+                || scraped.url.includes('fbcdn.net')
+                || (scraped.url.includes('.mp4')
+                    && !scraped.url.includes('m3u8')
+                    && !scraped.url.includes('abs.twimg.com')); // exclude Twitter UI assets
+            if (isCdnMp4) {
+                emit(100, 'Redirecting to CDN…');
+                res.setHeader('Content-Disposition', 'attachment; filename="OmniFetch_' + Date.now() + '.mp4"');
+                return res.redirect(302, scraped.url);
+            }
             return proxyStream(scraped.url, ext, mime, res, req, emit, url);
         }
     }
@@ -924,12 +977,21 @@ app.get('/download', async (req, res) => {
 // ── Proxy a remote stream directly to client ──────────────────────────────────
 function proxyStream(streamUrl, ext, mime, res, req, emit, referer) {
     const mod = streamUrl.startsWith('https') ? https : http;
-    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' };
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept':     '*/*',
+        'Accept-Encoding': 'identity', // prevent gzip compression on video streams
+    };
     if (referer) headers['Referer'] = referer;
 
     const proxyReq = mod.get(streamUrl, { headers }, (proxyRes) => {
-        res.setHeader('Content-Disposition', `attachment; filename="OmniFetch_${Date.now()}.${ext}"`);
+        // Follow redirects (CDNs often redirect to actual storage URL)
+        if ([301,302,303,307,308].includes(proxyRes.statusCode) && proxyRes.headers.location) {
+            return proxyStream(proxyRes.headers.location, ext, mime, res, req, emit, referer);
+        }
+        res.setHeader('Content-Disposition', 'attachment; filename="OmniFetch_' + Date.now() + '.' + ext + '"');
         res.setHeader('Content-Type', mime);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         if (proxyRes.headers['content-length'])
             res.setHeader('Content-Length', proxyRes.headers['content-length']);
 

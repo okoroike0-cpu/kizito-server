@@ -889,13 +889,16 @@ app.get('/api/info', async (req, res) => {
         console.log('[info] yt-dlp failed, trying page scraper for', url);
         const scraped = await scrapeMediaUrl(url);
         if (scraped) {
+            // Grab oEmbed metadata (already fired in parallel at top of request)
+            // so we get real title/author/thumbnail instead of null
+            const twMeta = twitterMetaPromise ? await twitterMetaPromise.catch(() => null) : null;
             return res.json({
                 success:   true,
-                title:     extractTitleFromUrl(url),
-                thumbnail: null,
+                title:     (twMeta && twMeta.title) || extractTitleFromUrl(url),
+                thumbnail: wrapThumb((twMeta && twMeta.thumbnail) || null),
                 url,
                 duration:  null,
-                uploader:  null,
+                uploader:  (twMeta && twMeta.author) || null,
                 source:    getHostname(url),
                 strategy:  'scraper',
                 scraped,
@@ -961,15 +964,22 @@ app.get('/download', async (req, res) => {
             if (scraped.type === 'hls' || hasCut) {
                 return streamViaFfmpeg(scraped.url, url, ext, mime, isAudio, startSec, endSec, res, req, emit);
             }
-            // Direct CDN redirect — browser downloads straight from source CDN.
-            // No proxying through our server, no re-encoding, no corruption.
-            // Exactly what ssstwitter does with video.twimg.com URLs.
-            const isCdnMp4 = scraped.url.includes('video.twimg.com')
-                || scraped.url.includes('fbcdn.net')
+            // For Twitter CDN (video.twimg.com): proxy through our server with
+            // correct headers — direct browser redirects get 403 because Twitter
+            // checks Referer and requires the request to look like it came from twitter.com
+            // For other CDNs (fbcdn etc): redirect directly, they allow it
+            const isTwitterCdn = scraped.url.includes('video.twimg.com');
+            const isOtherCdn   = scraped.url.includes('fbcdn.net')
                 || (scraped.url.includes('.mp4')
                     && !scraped.url.includes('m3u8')
-                    && !scraped.url.includes('abs.twimg.com')); // exclude Twitter UI assets
-            if (isCdnMp4) {
+                    && !scraped.url.includes('abs.twimg.com')
+                    && !scraped.url.includes('twimg.com'));
+
+            if (isTwitterCdn) {
+                // Proxy with Twitter-specific headers so CDN accepts the request
+                return proxyStream(scraped.url, ext, mime, res, req, emit, 'https://twitter.com');
+            }
+            if (isOtherCdn) {
                 emit(100, 'Redirecting to CDN…');
                 res.setHeader('Content-Disposition', 'attachment; filename="OmniFetch_' + Date.now() + '.mp4"');
                 return res.redirect(302, scraped.url);
@@ -985,12 +995,22 @@ app.get('/download', async (req, res) => {
 // ── Proxy a remote stream directly to client ──────────────────────────────────
 function proxyStream(streamUrl, ext, mime, res, req, emit, referer) {
     const mod = streamUrl.startsWith('https') ? https : http;
+    const isTwitter = streamUrl.includes('twimg.com');
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept':     '*/*',
+        'User-Agent':      isTwitter
+            ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept':          '*/*',
         'Accept-Encoding': 'identity', // prevent gzip compression on video streams
     };
     if (referer) headers['Referer'] = referer;
+    // Twitter CDN requires these headers to serve video — without them = 403
+    if (isTwitter) {
+        headers['Origin']          = 'https://twitter.com';
+        headers['Sec-Fetch-Dest']  = 'video';
+        headers['Sec-Fetch-Mode']  = 'no-cors';
+        headers['Sec-Fetch-Site']  = 'cross-site';
+    }
 
     const proxyReq = mod.get(streamUrl, { headers }, (proxyRes) => {
         // Follow redirects (CDNs often redirect to actual storage URL)

@@ -144,7 +144,12 @@ try {
     }
 
     // Restore cookies from env if provided (legacy support)
-    if (process.env.YOUTUBE_COOKIES) {
+    if (process.env.TWITTER_COOKIES) {
+        try {
+            fs.writeFileSync(COOKIES_PATH, process.env.TWITTER_COOKIES.replace(/\\n/g, '\n'), 'utf8');
+            console.log('✅ Twitter cookies restored from env');
+        } catch (e) { console.error('❌ Twitter cookie write failed:', e.message); }
+    } else if (process.env.YOUTUBE_COOKIES) {
         try {
             fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES.replace(/\\n/g, '\n'), 'utf8');
             console.log('✅ YouTube cookies restored from env');
@@ -249,6 +254,16 @@ function getPlatformFlags(url) {
             '--add-header', 'Referer:https://www.facebook.com/',
             '--add-header', 'Accept-Language:en-US,en;q=0.9',
             '--extractor-args', 'facebook:api=v21.0',
+        );
+    } else if (url.includes('dailymotion.com') || url.includes('dai.ly')) {
+        flags.push(
+            '--user-agent', UA_CHROME,
+            '--add-header', 'Referer:https://www.dailymotion.com/',
+            '--add-header', 'Accept-Language:en-US,en;q=0.9',
+            '--add-header', 'Origin:https://www.dailymotion.com',
+            // Use Dailymotion embed API — same one savethevideo uses
+            // This bypasses the main site bot detection
+            '--extractor-args', 'dailymotion:password=',
         );
     } else if (isTwitterUrl(url)) {
         flags.push(

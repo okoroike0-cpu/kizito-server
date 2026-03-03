@@ -113,19 +113,32 @@ try {
     // Ensure cache dir exists (for OAuth2 token persistence)
     try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch (_) {}
 
-    // Auto-login to Twitter/X using stored credentials (non-blocking)
-    // Runs in background so server starts immediately without waiting
+    // Auto-login to Twitter/X — delayed + retried to handle Render's network
+    // settling time on boot (first outbound requests often timeout on free tier)
     if (autoLoginTwitter && process.env.TWITTER_EMAIL && process.env.TWITTER_PASSWORD) {
-        autoLoginTwitter()
-            .then(ok => {
+        const tryLogin = async (attemptsLeft) => {
+            try {
+                const ok = await autoLoginTwitter();
                 if (ok) {
                     console.log('[bootstrap] ✅ Twitter auto-login succeeded');
-                    if (scheduleRefresh) scheduleRefresh(); // refresh every 12 hours
+                    if (scheduleRefresh) scheduleRefresh();
+                } else if (attemptsLeft > 1) {
+                    console.warn('[bootstrap] Twitter login failed, retrying in 30s...');
+                    setTimeout(() => tryLogin(attemptsLeft - 1), 30000);
                 } else {
-                    console.warn('[bootstrap] ⚠️  Twitter auto-login failed — restricted tweets may not download');
+                    console.warn('[bootstrap] ⚠️  Twitter auto-login failed after all retries');
                 }
-            })
-            .catch(e => console.error('[bootstrap] Twitter login error:', e.message));
+            } catch (e) {
+                if (attemptsLeft > 1) {
+                    console.warn('[bootstrap] Twitter login error:', e.message, '— retrying in 30s');
+                    setTimeout(() => tryLogin(attemptsLeft - 1), 30000);
+                } else {
+                    console.error('[bootstrap] Twitter login error:', e.message);
+                }
+            }
+        };
+        // Wait 10s after boot before first attempt — lets Render's network settle
+        setTimeout(() => tryLogin(3), 10000);
     } else {
         console.log('[bootstrap] ℹ️  TWITTER_EMAIL/PASSWORD not set — skipping auto-login');
     }

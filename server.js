@@ -728,6 +728,10 @@ app.get('/api/thumb', async (req, res) => {
 //  INFO ENDPOINT — multi-strategy
 // ══════════════════════════════════════════════════════════════════════════════
 app.get('/api/info', async (req, res) => {
+    // Disable caching — video metadata must always be fresh
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.removeHeader('ETag');
     const url = resolveUrl(req.query.url);
     if (!url) return res.status(400).json({ success: false, error: 'URL required.' });
     try { new URL(url); } catch {

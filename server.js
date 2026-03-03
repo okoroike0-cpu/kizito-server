@@ -26,7 +26,15 @@ const http           = require('http');
 const https          = require('https');
 const { Server }     = require('socket.io');
 const { spawn, execSync, spawnSync } = require('child_process');
-const { autoLoginTwitter, scheduleRefresh } = require('./twitter-login');
+// twitter-login.js is optional — if present, enables auto-login to X/Twitter
+let autoLoginTwitter = null, scheduleRefresh = null;
+try {
+    const tl = require('./twitter-login');
+    autoLoginTwitter = tl.autoLoginTwitter;
+    scheduleRefresh  = tl.scheduleRefresh;
+} catch (_) {
+    console.log('[bootstrap] twitter-login.js not found — Twitter auto-login disabled');
+}
 
 // ── PATH fix (Render non-Docker) ──────────────────────────────────────────────
 if (!process.env.DOCKER) {
@@ -107,12 +115,12 @@ try {
 
     // Auto-login to Twitter/X using stored credentials (non-blocking)
     // Runs in background so server starts immediately without waiting
-    if (process.env.TWITTER_EMAIL && process.env.TWITTER_PASSWORD) {
+    if (autoLoginTwitter && process.env.TWITTER_EMAIL && process.env.TWITTER_PASSWORD) {
         autoLoginTwitter()
             .then(ok => {
                 if (ok) {
                     console.log('[bootstrap] ✅ Twitter auto-login succeeded');
-                    scheduleRefresh(); // refresh every 12 hours
+                    if (scheduleRefresh) scheduleRefresh(); // refresh every 12 hours
                 } else {
                     console.warn('[bootstrap] ⚠️  Twitter auto-login failed — restricted tweets may not download');
                 }
